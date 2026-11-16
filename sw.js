@@ -1,10 +1,10 @@
 // Service worker: guarda os arquivos do app para abrir sem internet.
 // Ao publicar uma versão nova, troque o número de VERSAO para o iPhone baixar os arquivos atualizados.
-const VERSAO = 'v18';
+const VERSAO = 'v19';
 const CACHE = 'financas-' + VERSAO;
 const ARQUIVOS = [
   './', './index.html', './style.css', './manifest.webmanifest',
-  './js/app.js', './js/db.js', './js/domain.js', './js/format.js', './js/ui.js', './js/visual.js',
+  './js/app.js', './js/db.js', './js/domain.js', './js/format.js', './js/ui.js', './js/visual.js', './js/tema.js',
   './js/telas/comum.js', './js/telas/detalhe.js', './js/telas/inicio.js', './js/telas/lancamentos.js', './js/telas/novo.js',
   './js/telas/mes.js', './js/telas/cadastros.js', './js/telas/categorias.js', './js/telas/caixinhas.js', './js/telas/emprestimos.js', './js/telas/contas.js', './js/telas/honorarios.js', './js/telas/contrato.js', './js/telas/cartoes.js', './js/assistente.js', './js/telas/assistente.js', './js/telas/projecao.js', './js/telas/copiar.js', './js/telas/semcategoria.js', './js/telas/ajustes.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',

@@ -240,23 +240,21 @@ a.card { color: inherit; display: flex; flex-direction: column; gap: 6px; }
 .prog-parc small { font-size: 11.5px; color: var(--muted); display: block; }
 .vazio b { color: var(--ink); }
 
-/* ---------- modo escuro (automático, segue o iPhone) ---------- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --navy: #3A64A0; --navy-t: #8DB4E8; --bg: #0E141C; --card: #18212C; --ink: #E7ECF3; --muted: #9AA6B6; --line: #26313F; --line2: #33404F;
-    --green: #4CC585; --green-bg: #12301F; --red: #F0756D; --red-bg: #3A1B19; --amber: #F0B94A; --amber-bg: #3A2D0D;
-    --blue-soft: #5E7FA8; --blue-pale: #BFD0E8; --seg: #26313F; --seg-ink: #C3CCD8; --chip-bg: #18212C; --tag-azul: #1F3350; --seg-on: #33404F;
-    --shadow: none;
-  }
-  .cbadge { color: hsl(var(--h) 70% 82%); background: hsl(var(--h) 35% 24%); }
-  .aviso { background: #E7ECF3; color: #0E141C; }
-  .btn.sec { background: var(--card); color: var(--ink); border: 1px solid var(--line2); }
-  .saldo { background: linear-gradient(160deg, #2C4F82, #1E3860); }
-  .fundo { background: rgba(0,0,0,.6); }
-  .nav a.mais { background: #3A64A0; box-shadow: 0 6px 14px rgba(0,0,0,.5); }
-  .b-sai { opacity: 1; }
-  input, select { color-scheme: dark; }
+/* ---------- modo escuro (data-tema vem de js/tema.js: automático, claro ou escuro) ---------- */
+:root[data-tema="escuro"] {
+  --navy: #3A64A0; --navy-t: #8DB4E8; --bg: #0E141C; --card: #18212C; --ink: #E7ECF3; --muted: #9AA6B6; --line: #26313F; --line2: #33404F;
+  --green: #4CC585; --green-bg: #12301F; --red: #F0756D; --red-bg: #3A1B19; --amber: #F0B94A; --amber-bg: #3A2D0D;
+  --blue-soft: #5E7FA8; --blue-pale: #BFD0E8; --seg: #26313F; --seg-ink: #C3CCD8; --chip-bg: #18212C; --tag-azul: #1F3350; --seg-on: #33404F;
+  --shadow: none;
 }
+:root[data-tema="escuro"] .cbadge { color: hsl(var(--h) 70% 82%); background: hsl(var(--h) 35% 24%); }
+:root[data-tema="escuro"] .aviso { background: #E7ECF3; color: #0E141C; }
+:root[data-tema="escuro"] .btn.sec { background: var(--card); color: var(--ink); border: 1px solid var(--line2); }
+:root[data-tema="escuro"] .saldo { background: linear-gradient(160deg, #2C4F82, #1E3860); }
+:root[data-tema="escuro"] .fundo { background: rgba(0,0,0,.6); }
+:root[data-tema="escuro"] .nav a.mais { background: #3A64A0; box-shadow: 0 6px 14px rgba(0,0,0,.5); }
+:root[data-tema="escuro"] .b-sai { opacity: 1; }
+:root[data-tema="escuro"] input, :root[data-tema="escuro"] select { color-scheme: dark; }
 .pend, .pend span { color: var(--ink); }
 
 /* ---------- v15: assistente ---------- */
@@ -283,3 +281,6 @@ a.btn { display: flex; align-items: center; justify-content: center; text-decora
 .item.copia .t b { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; }
 .item.copia .t { min-width: 0; }
 .copia-barra { bottom: calc(78px + env(safe-area-inset-bottom)); }
+
+:root[data-tema="escuro"] { color-scheme: dark; }
+:root[data-tema="claro"] { color-scheme: light; }

@@ -17,6 +17,9 @@ export default function ajustes(ctx) {
         <a class="item" href="#/categorias"><span class="t"><b>Categorias</b><small>Criar, renomear, arquivar ou excluir</small></span><span class="rot">›</span></a>
         <a class="item" href="#/contas"><span class="t"><b>Contas</b><small>Criar, renomear, arquivar ou excluir</small></span><span class="rot">›</span></a>
       </div></section>
+    <section class="card" aria-label="Aparência"><h2>Aparência</h2>
+      <div class="seg peq" role="group" aria-label="Tema">${[['auto', 'Automático'], ['claro', 'Claro'], ['escuro', 'Escuro']].map(([v, t]) => `<button data-tema-op="${v}" class="${(window.Tema?.ler() || 'auto') === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <p class="nota">Automático segue o modo claro ou escuro do iPhone. A escolha vale só neste aparelho.</p></section>
     <section class="card">
       <h2>Backup dos dados</h2>
       <p class="nota">Seus dados ficam só neste iPhone. Se você apagar o app ou trocar de aparelho, eles se perdem — por isso salve um backup no Dropbox, no iCloud Drive ou em “Arquivos” com frequência.</p>
@@ -27,12 +30,16 @@ export default function ajustes(ctx) {
     </section>
     ${instalado() ? '' : `<section class="card"><h2>Instalar no iPhone</h2>
       <p class="nota">1. Abra este endereço no <b>Safari</b>.<br>2. Toque em <b>Compartilhar</b> (quadrado com seta).<br>3. Escolha <b>Adicionar à Tela de Início</b>.<br>Depois, abra sempre pelo ícone: funciona sem internet.</p></section>`}
-    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 18 · dados da planilha a partir de 01/11/2026.</p></section>`;
+    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 19 · dados da planilha a partir de 01/11/2026.</p></section>`;
 
   return {
     html,
     montar(raiz) {
       const msg = raiz.querySelector('#msg');
+      raiz.querySelectorAll('[data-tema-op]').forEach((b) => (b.onclick = () => {
+        window.Tema?.definir(b.dataset.temaOp);
+        raiz.querySelectorAll('[data-tema-op]').forEach((x) => x.classList.toggle('on', x === b));
+      }));
 
       raiz.querySelector('[data-exportar]').onclick = async () => {
         const conteudo = JSON.stringify(montarBackup(ctx.dados), null, 1);
