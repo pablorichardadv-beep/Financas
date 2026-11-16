@@ -1,7 +1,7 @@
 // Folha de detalhes de um lançamento: marcar como paga, editar, excluir.
 import { esc, folha, confirmar } from '../ui.js';
 import { reais, dataBR, hojeISO } from '../format.js';
-import { estaPago, estaAberto, contasAtivas, ligadaAEmprestimo } from '../domain.js';
+import { estaPago, estaAberto, contasAtivas, ligadaAEmprestimo, ligadaAHonorario, opsAoExcluirLancamento } from '../domain.js';
 import { nomes, origemTransf, destinoTransf, tituloItem } from './comum.js';
 
 const SITUACAO = { pago: 'Paga', aberto: 'Em aberto', atrasado: 'Atrasada', guardar: 'Guardar', cartao: 'Compra no cartão' };
@@ -30,13 +30,14 @@ export function abrirDetalhe(ctx, id) {
   if (l.tipo === 'cartao') linhas.push(['Fatura', l.mes]);
   if (l.tipo !== 'transferencia') linhas.push(['Situação', SITUACAO[l.situacao] || l.situacao]);
   const doEmprestimo = l.tipo === 'transferencia' && ligadaAEmprestimo(l);
+  const doHonorario = ligadaAHonorario(l);
   const podePagar = !ehCartao && l.tipo !== 'transferencia' && !estaPago(l) && (estaAberto(l) || l.situacao === 'guardar');
 
   const f = folha(`
     <div><h2>${esc(tituloItem(l))}</h2><p class="rot">${esc(l.tipo === 'receita' ? 'Receita' : l.tipo === 'transferencia' ? 'Transferência' : l.tipo === 'cartao' ? 'Cartão de crédito' : 'Despesa')} · <b>${reais(l.valor)}</b></p></div>
     <div class="card" style="gap:0;padding:6px 16px">${linhas.map(([a, b]) => `<div class="item"><span class="rot">${esc(a)}</span><b style="font-size:14.5px">${esc(b)}</b></div>`).join('')}</div>
     ${podePagar ? `<button class="btn" data-pagar>${l.tipo === 'receita' ? 'Marcar como recebida' : 'Marcar como paga'}</button>` : ''}
-    ${doEmprestimo ? '<p class="nota">Este lançamento faz parte de um empréstimo. Para corrigir, exclua-o e registre de novo pela tela do empréstimo.</p>' : '<button class="btn sec" data-editar>Editar</button>'}
+    ${doHonorario ? '<p class="nota">Este lançamento é o recebimento de um honorário. Para corrigir, abra o honorário em Contas e desfaça o recebimento. Se você excluir este lançamento, a parcela volta para “a receber”.</p>' : doEmprestimo ? '<p class="nota">Este lançamento faz parte de um empréstimo. Para corrigir, exclua-o e registre de novo pela tela do empréstimo.</p>' : '<button class="btn sec" data-editar>Editar</button>'}
     <button class="btn perigo" data-excluir>Excluir</button>`);
 
   const be = f.el.querySelector('[data-editar]');
@@ -48,6 +49,7 @@ export function abrirDetalhe(ctx, id) {
     const ops = [['del', ehCartao ? 'compras_cartao' : 'lancamentos', id]];
     for (const m of d.caixinha_movimentos) if (m.lancamento_id === id) ops.push(['del', 'caixinha_movimentos', m.id]);
     for (const m of d.emprestimo_movimentos) if (m.lancamento_id === id) ops.push(['del', 'emprestimo_movimentos', m.id]);
+    if (!ehCartao) ops.push(...opsAoExcluirLancamento(d, l));
     await ctx.gravar(ops);
     ctx.aviso('Lançamento excluído');
   };

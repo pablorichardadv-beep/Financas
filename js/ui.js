@@ -58,14 +58,19 @@ export function confirmar(titulo, texto, rotuloOk = 'Confirmar', perigo = false)
  * Campo de valor em reais: cada dígito digitado entra como centavo, sempre no fim (como nos apps de banco).
  * `aoMudar(centavos)` é chamado a cada alteração. Devolve { obter(), definir(centavos) }.
  */
-export function ligarCampoValor(input, inicial, aoMudar) {
+// substituir: ao tocar no campo já preenchido, o primeiro dígito digitado troca o valor (em vez de acrescentar)
+export function ligarCampoValor(input, inicial, aoMudar, { substituir = false } = {}) {
   let v = inicial || 0;
+  let trocar = false;
   const mostrar = () => { input.value = 'R$ ' + num(v); aoMudar?.(v); };
   input.value = 'R$ ' + num(v);
   input.addEventListener('beforeinput', (e) => {
     if (e.inputType === 'insertText' && /^\d$/.test(e.data ?? '')) {
+      if (trocar) v = 0;
+      trocar = false;
       if (String(v).length < 10) v = v * 10 + Number(e.data);
     } else if (e.inputType === 'deleteContentBackward') {
+      trocar = false;
       v = Math.floor(v / 10);
     } else if (e.inputType === 'insertText' || e.inputType.startsWith('delete')) {
       // ignora letras e outras teclas
@@ -77,6 +82,7 @@ export function ligarCampoValor(input, inicial, aoMudar) {
     v = parseInt(input.value.replace(/\D/g, '').slice(0, 10) || '0', 10);
     mostrar();
   });
+  input.addEventListener('focus', () => { trocar = substituir && v > 0; });
   input.addEventListener('focus', () => setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0));
   return { obter: () => v, definir: (x) => { v = x; mostrar(); } };
 }

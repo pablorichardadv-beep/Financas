@@ -202,6 +202,7 @@ function estadoInicial(d, id) {
   }
   const l = d.lancamentos.find((x) => x.id === id);
   if (!l) return { erroCarga: true };
+  if (D.ligadaAHonorario(l)) return { erroCarga: true, mensagem: 'Este lançamento é o recebimento de um honorário. Para alterá-lo, abra o honorário em Contas e desfaça o recebimento.' };
   if (D.ligadaAEmprestimo(l)) return { erroCarga: true, mensagem: 'Este lançamento faz parte de um empréstimo. Para alterá-lo, abra o empréstimo em Contas e exclua o movimento.' };
   return {
     ...base, tipo: l.tipo, valor: l.valor, descricao: l.descricao || '', data: l.data || (l.mes ? `${l.mes}-01` : hojeISO()),

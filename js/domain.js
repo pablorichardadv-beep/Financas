@@ -1,5 +1,5 @@
 // Regras e cálculos do controle financeiro. Funções puras: recebem os dados (d) e devolvem números/listas.
-// d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios }
+// d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios (parcelas), contratos }
 // Todos os valores em CENTAVOS.
 
 import { norm, novoId } from './format.js';
@@ -195,6 +195,8 @@ export function despesasPorCategoria(d, mes) {
 export const faturaCartao = (d, mes) => soma(d.compras_cartao.filter((k) => k.fatura === mes).map((k) => k.valor));
 
 // ---------- honorários ----------
+// contrato = { id, cliente, descricao, total, qtd (nº de parcelas), parceria? }
+// parcela  = { id, contrato, numero, valor, vencimento (ou null), status: 'aberto' | 'pago' | 'calote', pago_em?, conta?, lancamento_id? }
 export function resumoHonorarios(d, hoje) {
   let aReceber = 0, atrasado = 0, calote = 0;
   for (const h of d.honorarios) {
@@ -204,6 +206,111 @@ export function resumoHonorarios(d, hoje) {
     if (h.vencimento && h.vencimento < hoje) atrasado += h.valor;
   }
   return { aReceber, atrasado, calote };
+}
+
+/** Soma `k` meses a uma data AAAA-MM-DD mantendo o dia (se o mês for mais curto, usa o último dia dele). */
+export function somarMeses(iso, k) {
+  const [y, m, dia] = iso.split('-').map(Number);
+  const t = m - 1 + k;
+  const ano = y + Math.floor(t / 12);
+  const mes = ((t % 12) + 12) % 12;
+  const ultimo = new Date(ano, mes + 1, 0).getDate();
+  return `${ano}-${String(mes + 1).padStart(2, '0')}-${String(Math.min(dia, ultimo)).padStart(2, '0')}`;
+}
+
+/**
+ * Parcelas de um contrato novo. Sem `valorParcela`, divide o total igualmente (a diferença de centavos vai para a última).
+ * Com `valorParcela`, todas valem isso. Vencimentos mensais a partir de `primeiroVenc`.
+ */
+export function gerarParcelas({ total, qtd, valorParcela = 0, primeiroVenc = null }) {
+  const base = valorParcela > 0 ? valorParcela : Math.floor(total / qtd);
+  const lista = Array.from({ length: qtd }, (_, i) => ({ numero: i + 1, valor: base, vencimento: primeiroVenc ? somarMeses(primeiroVenc, i) : null }));
+  if (!(valorParcela > 0)) lista[qtd - 1].valor += total - base * qtd;
+  return lista;
+}
+
+export function validarNovoContrato({ cliente, total, qtd, valorParcela, primeiroVenc }) {
+  if (!String(cliente || '').trim()) return { erro: 'Informe o cliente.' };
+  if (String(cliente).trim().length > 40) return { erro: 'Use no máximo 40 letras no nome do cliente.' };
+  if (!(total > 0)) return { erro: 'Informe o valor total do honorário.' };
+  if (!Number.isInteger(qtd) || qtd < 1 || qtd > 120) return { erro: 'O número de parcelas deve ficar entre 1 e 120.' };
+  if (!(valorParcela > 0)) return { erro: 'Informe o valor de cada parcela.' };
+  if (!primeiroVenc) return { erro: 'Informe o vencimento da primeira parcela.' };
+  return { ok: true };
+}
+
+export function validarEdicaoContrato({ cliente, total }) {
+  if (!String(cliente || '').trim()) return { erro: 'Informe o cliente.' };
+  if (String(cliente).trim().length > 40) return { erro: 'Use no máximo 40 letras no nome do cliente.' };
+  if (!(total > 0)) return { erro: 'Informe o valor total do honorário.' };
+  return { ok: true };
+}
+
+export function validarParcela({ valor }) {
+  if (!(valor > 0)) return { erro: 'Informe o valor da parcela.' };
+  return { ok: true };
+}
+
+/** Situação e números de um contrato. situacao: 'aberto' (tem parcela a receber) | 'calote' (só calote e recebidas) | 'quitado'. */
+export function resumoContrato(d, c, hoje) {
+  const parcelas = d.honorarios.filter((p) => p.contrato === c.id).sort((a, b) => a.numero - b.numero);
+  const por = (st) => parcelas.filter((p) => p.status === st);
+  const abertas = por('aberto');
+  const aReceber = soma(abertas.map((p) => p.valor));
+  const proxima = abertas.filter((p) => p.vencimento).sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0] || null;
+  return {
+    parcelas,
+    recebido: soma(por('pago').map((p) => p.valor)),
+    aReceber,
+    calote: soma(por('calote').map((p) => p.valor)),
+    soma: soma(parcelas.map((p) => p.valor)),
+    atrasado: soma(abertas.filter((p) => p.vencimento && p.vencimento < hoje).map((p) => p.valor)),
+    qtdAbertas: abertas.length,
+    proxima,
+    situacao: abertas.length ? 'aberto' : por('calote').length ? 'calote' : 'quitado',
+  };
+}
+
+export const clientesConhecidos = (d) => [...new Set(d.contratos.map((c) => c.cliente))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+/** Categoria sugerida para o recebimento de honorários (a de direito, se existir). */
+export const categoriaHonorarios = (d) =>
+  d.categorias.find((c) => c.tipo === 'receita' && !c.arquivada && norm(c.nome) === 'direito')?.id
+  || d.categorias.find((c) => c.tipo === 'receita' && !c.arquivada)?.id || null;
+
+export const rotuloParcela = (p, c) => `${p.numero}/${Math.max(c.qtd || 0, p.numero)}`;
+
+/** Recebimento de uma parcela: marca como paga e lança a receita na conta escolhida. */
+export function opsReceberParcela(d, p, c, { conta, data, categoria = null }) {
+  const idL = novoId('l');
+  return [
+    ['put', 'lancamentos', {
+      id: idL, tipo: 'receita', data, descricao: `Honorários – ${c.cliente} (${rotuloParcela(p, c)})`, valor: p.valor,
+      conta, categoria, situacao: 'pago', honorario_id: p.id,
+    }],
+    ['put', 'honorarios', { ...p, status: 'pago', pago_em: data, conta, lancamento_id: idL }],
+  ];
+}
+
+/** Volta a parcela para "em aberto" e apaga o lançamento do recebimento. */
+export function opsDesfazerRecebimento(p) {
+  const { pago_em, conta, lancamento_id, ...resto } = p;
+  const ops = [['put', 'honorarios', { ...resto, status: 'aberto' }]];
+  if (lancamento_id) ops.push(['del', 'lancamentos', lancamento_id]);
+  return ops;
+}
+
+export const opsExcluirContrato = (d, id) => [...d.honorarios.filter((p) => p.contrato === id).map((p) => ['del', 'honorarios', p.id]), ['del', 'contratos', id]];
+
+/** O lançamento é o recebimento de uma parcela de honorário? (então só se altera pela tela do honorário) */
+export const ligadaAHonorario = (l) => Boolean(l.honorario_id);
+
+/** Ao excluir um lançamento de recebimento, a parcela volta a ficar em aberto. */
+export function opsAoExcluirLancamento(d, l) {
+  const p = l.honorario_id && d.honorarios.find((x) => x.id === l.honorario_id);
+  if (!p) return [];
+  const { pago_em, conta, lancamento_id, ...resto } = p;
+  return [['put', 'honorarios', { ...resto, status: 'aberto' }]];
 }
 
 // ---------- listas e apoio ao formulário ----------
@@ -492,5 +599,41 @@ export function migrar(d) {
     return { sentido: 'dado', ...resto };
   });
   out.emprestimo_movimentos = movs;
+
+  // honorários: cada linha antiga (uma parcela com cliente e valor do contrato) vira parcela de um contrato
+  const contratos = [...(d.contratos || [])];
+  const chave = new Map();
+  const numeros = new Map();
+  const novas = (d.honorarios || []).filter((h) => !h.contrato);
+  if (novas.length) {
+    mudou = true;
+    for (const h of novas) {
+      const cliente = String(h.cliente || h.descricao || 'Sem cliente').trim();
+      const descricao = String(h.descricao || '').replace(/^escrit[óo]rio\s*-\s*/i, '').trim();
+      const k = `${norm(cliente)}|${norm(descricao)}`;
+      if (!chave.has(k)) {
+        const c = { id: `t${String(contratos.length + 1).padStart(3, '0')}`, cliente, descricao, total: 0, qtd: 0, _n: 0 };
+        if (h.parceria) c.parceria = h.parceria;
+        contratos.push(c); chave.set(k, c);
+      }
+      const c = chave.get(k);
+      const m = String(h.parcela || '').match(/(\d+)\s*de\s*(\d+)/i);
+      c._n += 1;
+      numeros.set(h, m ? Number(m[1]) : c._n);
+      c.qtd = Math.max(c.qtd, m ? Number(m[2]) : 0, numeros.get(h));
+      if (!c.total && h.valor_contrato) c.total = h.valor_contrato;
+    }
+  }
+  out.honorarios = (d.honorarios || []).map((h) => {
+    if (h.contrato) return h;
+    const k = `${norm(String(h.cliente || h.descricao || 'Sem cliente').trim())}|${norm(String(h.descricao || '').replace(/^escrit[óo]rio\s*-\s*/i, '').trim())}`;
+    const { cliente, descricao, parceria, valor_contrato, parcela, ...resto } = h;
+    return { ...resto, contrato: chave.get(k).id, numero: numeros.get(h) };
+  });
+  out.contratos = contratos.map(({ _n, ...c0 }) => {
+    const c = { ...c0 };
+    if (!c.total) c.total = out.honorarios.filter((p) => p.contrato === c.id).reduce((s, p) => s + p.valor, 0);
+    return c;
+  });
   return { d: out, mudou };
 }

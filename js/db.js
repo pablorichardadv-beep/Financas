@@ -1,11 +1,12 @@
 // Banco local (IndexedDB). Tudo fica no aparelho; nada é enviado para a internet.
 // Cada "tabela" é um object store com chave "id" (a tabela "meta" usa "chave").
 // Versão 2 do banco: acrescenta a tabela emprestimo_movimentos (as versões antigas guardavam os movimentos dentro do empréstimo).
+// Versão 3: acrescenta a tabela contratos (honorários); "honorarios" passa a guardar as parcelas de cada contrato.
 import { migrar } from './domain.js';
 
 const NOME_DB = 'controle-financeiro';
-const VERSAO_DB = 2;
-export const TABELAS = ['contas', 'categorias', 'lancamentos', 'compras_cartao', 'caixinhas', 'caixinha_movimentos', 'emprestimos', 'emprestimo_movimentos', 'honorarios'];
+const VERSAO_DB = 3;
+export const TABELAS = ['contas', 'categorias', 'lancamentos', 'compras_cartao', 'caixinhas', 'caixinha_movimentos', 'emprestimos', 'emprestimo_movimentos', 'honorarios', 'contratos'];
 const META = 'meta';
 
 let dbPromessa = null;
@@ -93,7 +94,7 @@ export async function substituirTudo(dados, metaExtra = {}) {
 export function montarBackup(d) {
   const dados = {};
   for (const t of TABELAS) dados[t] = d[t];
-  return { app: 'controle-financeiro', versao: 2, exportado_em: new Date().toISOString(), ...dados };
+  return { app: 'controle-financeiro', versao: 3, exportado_em: new Date().toISOString(), ...dados };
 }
 
 /** Confere se um JSON parece um backup/carga válido. Devolve texto de erro ou null. */

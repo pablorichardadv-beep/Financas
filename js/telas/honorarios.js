@@ -1,26 +1,60 @@
-import { esc } from '../ui.js';
+// Honorários: resumo, próximos vencimentos e a lista de contratos (um por cliente/ação). Rota: #/honorarios
+import { esc, icone } from '../ui.js';
 import { reais, hojeISO, dataBR } from '../format.js';
 import * as D from '../domain.js';
+import { abrirEditorContrato, abrirParcela } from './contrato.js';
 
 export default function honorarios(ctx) {
   const d = ctx.dados;
   const hoje = hojeISO();
   const r = D.resumoHonorarios(d, hoje);
-  const abertos = d.honorarios.filter((h) => h.status === 'aberto').sort((a, b) => (a.vencimento || '').localeCompare(b.vencimento || ''));
   const calotes = d.honorarios.filter((h) => h.status === 'calote');
+  const porContrato = new Map(d.contratos.map((c) => [c.id, c]));
 
-  const linha = (h) => {
-    const atras = h.vencimento && h.vencimento < hoje;
-    return `<div class="item"><span class="t"><b>${esc(h.cliente || h.descricao)}</b><small>${esc(h.vencimento ? dataBR(h.vencimento) : 'sem data')}${h.parcela ? ' · parcela ' + esc(h.parcela) : ''}${atras ? '<span class="tag verm">Atrasada</span>' : ''}</small></span><span class="v">${reais(h.valor)}</span></div>`;
+  const itens = d.contratos.map((c) => ({ c, s: D.resumoContrato(d, c, hoje) }));
+  const porNome = (a, b) => a.c.cliente.localeCompare(b.c.cliente, 'pt-BR');
+  const emAberto = itens.filter((x) => x.s.situacao === 'aberto').sort((a, b) => (a.s.proxima?.vencimento || '9999').localeCompare(b.s.proxima?.vencimento || '9999') || porNome(a, b));
+  const soCalote = itens.filter((x) => x.s.situacao === 'calote').sort(porNome);
+  const quitados = itens.filter((x) => x.s.situacao === 'quitado').sort(porNome);
+
+  const linhaContrato = ({ c, s }) => {
+    const partes = [];
+    if (c.descricao) partes.push(esc(c.descricao));
+    if (s.situacao === 'aberto') partes.push(`${s.qtdAbertas} em aberto${s.proxima ? ' · próxima ' + dataBR(s.proxima.vencimento) : ''}`);
+    const tag = s.atrasado ? '<span class="tag verm">Atrasado</span>' : s.calote && s.situacao === 'aberto' ? '<span class="tag verm">Tem calote</span>' : '';
+    const valor = s.situacao === 'calote' ? s.calote : s.situacao === 'quitado' ? s.recebido : s.aReceber;
+    return `<a class="item" href="#/honorario/${esc(c.id)}"><span class="t"><b>${esc(c.cliente)}</b><small>${partes.join(' · ')}${tag}</small></span>
+      <span class="v ${s.situacao === 'calote' ? 'verm' : ''}">${reais(valor)} <span class="rot">›</span></span></a>`;
+  };
+  const grupo = (titulo, lista) => (lista.length ? `<section class="card" style="gap:2px"><h2>${titulo}</h2><div class="lista">${lista.map(linhaContrato).join('')}</div></section>` : '');
+
+  const proximas = d.honorarios.filter((h) => h.status === 'aberto')
+    .sort((a, b) => (a.vencimento || '9999').localeCompare(b.vencimento || '9999')).slice(0, 6);
+  const linhaParcela = (p) => {
+    const c = porContrato.get(p.contrato);
+    const atras = p.vencimento && p.vencimento < hoje;
+    return `<button class="item" data-parcela="${esc(p.id)}"><span class="t"><b>${esc(c?.cliente || '?')}</b><small>${p.vencimento ? dataBR(p.vencimento) : 'sem data'} · parcela ${esc(c ? D.rotuloParcela(p, c) : p.numero)}${atras ? '<span class="tag verm">Atrasada</span>' : ''}</small></span>
+      <span class="v">${reais(p.valor)}</span></button>`;
   };
 
   const html = `
-    <header class="topo"><h1 class="grande">Honorários</h1></header>
+    <header class="topo"><div><a class="link" href="#/contas">‹ Contas</a><h1 class="grande">Honorários</h1></div><button class="btn-ic" data-novo aria-label="Novo honorário">${icone.mais()}</button></header>
     <div class="dois">
       <div class="card mini"><span class="rot">A receber</span><span class="num">${reais(r.aReceber)}</span>${r.atrasado ? `<span class="selo ouro">${reais(r.atrasado)} atrasado</span>` : '<span class="selo ok">Nada atrasado</span>'}</div>
-      <div class="card mini"><span class="rot">Calote</span><span class="num">${reais(r.calote)}</span><span class="selo verm">${calotes.length} parcelas</span></div>
+      <div class="card mini"><span class="rot">Calote</span><span class="num">${reais(r.calote)}</span><span class="selo verm">${calotes.length} ${calotes.length === 1 ? 'parcela' : 'parcelas'}</span></div>
     </div>
-    <section class="card" style="gap:2px"><h2>Próximos recebimentos</h2><div class="lista">${abertos.length ? abertos.map(linha).join('') : '<p class="vazio">Nada em aberto.</p>'}</div></section>
-    <p class="nota" style="text-align:center">Por enquanto esta tela é só de consulta. Marcar parcela como recebida entra na próxima etapa; até lá, lance a entrada em “Novo lançamento”.</p>`;
-  return { html };
+    ${proximas.length ? `<section class="card" style="gap:2px"><h2>Próximos vencimentos</h2><div class="lista">${proximas.map(linhaParcela).join('')}</div></section>` : ''}
+    ${d.contratos.length ? '' : '<section class="card"><h2>Nenhum honorário ainda</h2><p class="nota">Toque no + para cadastrar um honorário com o cliente, o valor total, as parcelas e os vencimentos.</p></section>'}
+    ${grupo('Contratos em aberto', emAberto)}
+    ${grupo('Somente calote', soCalote)}
+    ${grupo('Quitados', quitados)}
+    <p class="nota" style="text-align:center">Cada honorário tem o total e as parcelas, cada uma com valor e vencimento. Ao receber uma parcela, o app lança a receita na conta escolhida.</p>`;
+
+  return {
+    html,
+    montar(raiz) {
+      raiz.querySelector('[data-novo]').onclick = () => abrirEditorContrato(ctx, null);
+      raiz.querySelectorAll('[data-parcela]').forEach((b) => (b.onclick = () => abrirParcela(ctx, b.dataset.parcela)));
+    },
+  };
 }
