@@ -11,6 +11,7 @@ import ajustes from './telas/ajustes.js';
 import projecao from './telas/projecao.js';
 import semcategoria from './telas/semcategoria.js';
 import assistente from './telas/assistente.js';
+import copiar from './telas/copiar.js';
 import categorias from './telas/categorias.js';
 import caixinha from './telas/caixinhas.js';
 import emprestimo from './telas/emprestimos.js';
@@ -19,9 +20,9 @@ import cartao from './telas/cartoes.js';
 import * as D from './domain.js';
 import { hojeISO } from './format.js';
 
-const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo, honorario, cartao, projecao, semcategoria, assistente };
+const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo, honorario, cartao, projecao, semcategoria, assistente, copiar };
 // telas que pertencem a "Contas" (o botão da barra inferior continua marcado)
-const DENTRO_DE_MES = ['projecao'];
+const DENTRO_DE_MES = ['projecao', 'copiar'];
 const DENTRO_DE_INICIO = ['assistente', 'semcategoria'];
 const DENTRO_DE_CONTAS = ['caixinha', 'emprestimo', 'honorarios', 'honorario', 'cartao'];
 const raiz = document.getElementById('app');

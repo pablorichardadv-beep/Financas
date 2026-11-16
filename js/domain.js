@@ -1059,3 +1059,50 @@ export function somarDias(iso, k) {
   const dt = new Date(iso + 'T12:00:00'); dt.setDate(dt.getDate() + k);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
+
+// ---------- copiar contas a pagar de um mês para outro ----------
+const CONTA_TIPICA = /\b(aluguel|condominio|cemig|copasa|energia|luz|agua|internet|vivo|claro|tim|oi|unimed|plano|financiamento|consorcio|seguro|mensalidade|escola|faculdade|iptu|ipva|contabilidade|contador|anuidade|oab|academia|salario|pensao|dizimo)\b/;
+const RE_N_DE_M = /(\d{1,2})( de )(\d{1,2})(?!\d)/, RE_PARCELA = /(parcela\s+)(\d{1,3})(?!\d)/i;
+/** Nome sem o número da parcela, para reconhecer a mesma conta em meses diferentes. */
+export const baseDaConta = (desc) => norm(String(desc || '').replace(RE_N_DE_M, ' ').replace(RE_PARCELA, ' '));
+/** "03 de 04" -> "04 de 04"; "Parcela 09" -> "Parcela 10". Devolve { descricao, acabou } (acabou = a última parcela já foi). */
+export function proximaParcela(desc) {
+  const s = String(desc || '');
+  let m = s.match(RE_N_DE_M);
+  if (m) {
+    if (Number(m[1]) >= Number(m[3])) return { descricao: s, acabou: true };
+    return { descricao: s.replace(RE_N_DE_M, `${String(Number(m[1]) + 1).padStart(m[1].length, '0')}$2$3`), acabou: false };
+  }
+  m = s.match(RE_PARCELA);
+  if (m) return { descricao: s.replace(RE_PARCELA, `$1${String(Number(m[2]) + 1).padStart(m[2].length, '0')}`), acabou: false };
+  return { descricao: s, acabou: false };
+}
+const diaNoMesCopia = (data, mes) => {
+  const [a, m] = mes.split('-').map(Number);
+  const dia = Math.min(data ? Number(data.slice(8, 10)) : 10, new Date(a, m, 0).getDate());
+  return `${mes}-${String(dia).padStart(2, '0')}`;
+};
+/**
+ * Despesas do mês de origem que podem virar "a pagar" no mês de destino.
+ * sugerida = parece conta fixa (categoria Fixas, tem parcela a vencer, ou também existiu no mês anterior à origem).
+ * jaExiste = o destino já tem uma despesa com o mesmo nome.
+ */
+export function candidatasCopia(d, origem, destino) {
+  const despesas = (mes) => d.lancamentos.filter((l) => l.tipo === 'despesa' && !l.fatura_cartao && !l.legado && mesDoLanc(l) === mes);
+  const noDestino = new Set(despesas(destino).map((l) => baseDaConta(l.descricao)));
+  const antes = new Set(despesas(somarMesFatura(origem, -1)).map((l) => baseDaConta(l.descricao)));
+  const fixas = new Set(d.categorias.filter((c) => /fixa/.test(norm(c.nome))).map((c) => c.id));
+  return despesas(origem).map((l) => {
+    const prox = proximaParcela(l.descricao), base = baseDaConta(l.descricao);
+    const temParcela = prox.descricao !== (l.descricao || '');
+    const jaExiste = noDestino.has(base);
+    return {
+      origem: l.id, descricao: prox.descricao, valor: l.valor, data: diaNoMesCopia(l.data, destino), conta: l.conta || null, categoria: l.categoria || null,
+      acabou: prox.acabou, jaExiste, sugerida: !prox.acabou && !jaExiste && (temParcela || fixas.has(l.categoria) || antes.has(base) || CONTA_TIPICA.test(base)),
+    };
+  }).sort((a, b) => Number(b.sugerida) - Number(a.sugerida) || b.valor - a.valor);
+}
+/** Cria os lançamentos "a pagar" escolhidos. itens: [{ descricao, valor, data, conta, categoria }] */
+export const opsCopiarContas = (itens) => itens.filter((i) => i.valor > 0).map((i) => ['put', 'lancamentos', {
+  id: novoId('l'), tipo: 'despesa', descricao: i.descricao, valor: i.valor, data: i.data, conta: i.conta || null, categoria: i.categoria || null, situacao: 'aberto',
+}]);

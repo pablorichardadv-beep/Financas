@@ -270,3 +270,16 @@ a.card { color: inherit; display: flex; flex-direction: column; gap: 6px; }
 .ass-ic { width: 38px; height: 38px; border-radius: 12px; background: var(--tag-azul); display: inline-flex; align-items: center; justify-content: center; font-size: 19px; flex: none; }
 .ass-atalho .seta { color: var(--muted); font-size: 18px; }
 .chips .chip { height: auto; min-height: 34px; padding: 7px 12px; text-align: left; line-height: 1.25; }
+
+/* ---------- v16: copiar contas ---------- */
+.item.copia { gap: 10px; cursor: pointer; }
+.item.copia input[type=checkbox] { width: 22px; height: 22px; flex: none; accent-color: var(--navy); }
+.item.copia .cvalor { width: 104px; flex: none; text-align: right; border: 1px solid var(--line2); border-radius: 10px; padding: 8px 9px; font-size: 14px; font-weight: 600; background: var(--card); color: var(--ink); }
+.item.copia.apagada .t, .item.copia.apagada .cbadge { opacity: .55; }
+.copia-barra { position: sticky; bottom: 8px; z-index: 5; }
+.copia-barra .btn { box-shadow: 0 6px 18px rgba(20,32,46,.25); }
+.copia-barra .btn:disabled { opacity: .6; }
+a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+.item.copia .t b { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; }
+.item.copia .t { min-width: 0; }
+.copia-barra { bottom: calc(78px + env(safe-area-inset-bottom)); }

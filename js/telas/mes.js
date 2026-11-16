@@ -59,6 +59,7 @@ export default function mes(ctx) {
       ${barrasMeses(serie)}
       <div class="legenda"><span><i class="pt ent"></i>Entradas</span><span><i class="pt sai"></i>Saídas</span></div>
     </section>
+    <a class="card" href="#/copiar"><div class="linha-tit"><h2>Copiar contas a pagar do mês anterior</h2><span class="link">Abrir ›</span></div><p class="nota">Monte a previsão do próximo mês em um toque: escolha as contas fixas e elas entram como a pagar.</p></a>
     <a class="card" href="#/projecao"><div class="linha-tit"><h2>Projeção dos próximos meses</h2><span class="link">Ver ›</span></div><p class="nota">Quanto deve sobrar nas contas mês a mês, com o que já está a receber e a pagar.</p></a>
     ${fatura ? `<section class="card" aria-label="Cartão de crédito"><div class="linha-tit"><h2>Faturas dos cartões</h2><b class="verm">${reais(fatura)}</b></div>
       ${faturas.length > 1 || faturas[0]?.cartao ? `<div class="lista">${faturas.map((x) => x.cartao

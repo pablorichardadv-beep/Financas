@@ -18,6 +18,7 @@ export default function projecao(ctx) {
       <div class="b"><i class="${m.saldoFinal < 0 ? 'estourou' : ''}" style="width:${Math.max(2, Math.round((Math.abs(m.saldoFinal) / max) * 100))}%"></i></div>
       <div class="tres"><div><span class="rot">Entra</span><b class="verde">+ ${reais(m.entradas)}</b></div><div><span class="rot">Sai</span><b class="verm">− ${reais(m.saidas)}</b></div><div><span class="rot">Sobra no mês</span><b class="${m.saldoMes < 0 ? 'verm' : 'azul'}">${reais(m.saldoMes)}</b></div></div>
     </section>`).join('')}
+    <a class="btn sec" href="#/copiar" style="text-align:center">Copiar contas a pagar do mês anterior</a>
     <p class="nota" style="text-align:center">Gastos do dia a dia que você ainda não lançou não aparecem aqui. Quanto mais completo o “a pagar”, mais fiel a projeção.</p>`;
   return { html, montar(raiz) { ligarAjudas(raiz); } };
 }
