@@ -18,7 +18,7 @@ export default function copiar(ctx) {
     <header class="topo"><div><a class="link" href="#/mes">‹ Mês</a><h1 class="grande">Copiar contas</h1></div></header>
     <section class="card">
       <div class="campo"><label for="cdest">Prever as contas de</label><select id="cdest">${opcoes.map((m) => `<option value="${m}" ${m === destino ? 'selected' : ''}>${esc(mesLongo(m))}</option>`).join('')}</select></div>
-      <p class="nota">Abaixo estão as despesas de <b>${esc(mesLongo(origem))}</b>. Marque as que se repetem em ${esc(mesLongo(destino))}, ajuste o valor se mudou, e elas entram como <b>a pagar</b>, no mesmo dia do mês. Já vêm marcadas as que parecem fixas ou parceladas.</p>
+      <p class="nota">Abaixo estão as despesas de <b>${esc(mesLongo(origem))}</b>. Marque as que se repetem em ${esc(mesLongo(destino))}, ajuste o valor se mudou, e elas entram como <b>a pagar</b>, com vencimento no <b>último dia do mês</b>. Já vêm marcadas as que parecem fixas ou parceladas.</p>
       <div class="seg peq"><button data-marcar="sug">Só as sugeridas</button><button data-marcar="todas">Todas</button><button data-marcar="nenhuma">Nenhuma</button></div>
     </section>
     <section class="card" style="gap:2px"><div class="lista">${itens.length ? itens.map((i, k) => `<label class="item copia ${i.jaExiste || i.acabou ? 'apagada' : ''}">

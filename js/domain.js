@@ -1077,10 +1077,10 @@ export function proximaParcela(desc) {
   if (m) return { descricao: s.replace(RE_PARCELA, `$1${String(Number(m[2]) + 1).padStart(m[2].length, '0')}`), acabou: false };
   return { descricao: s, acabou: false };
 }
-const diaNoMesCopia = (data, mes) => {
+/** Vencimento das contas copiadas: sempre o último dia do mês de destino. */
+const diaNoMesCopia = (_data, mes) => {
   const [a, m] = mes.split('-').map(Number);
-  const dia = Math.min(data ? Number(data.slice(8, 10)) : 10, new Date(a, m, 0).getDate());
-  return `${mes}-${String(dia).padStart(2, '0')}`;
+  return `${mes}-${String(new Date(a, m, 0).getDate()).padStart(2, '0')}`;
 };
 /**
  * Despesas do mês de origem que podem virar "a pagar" no mês de destino.

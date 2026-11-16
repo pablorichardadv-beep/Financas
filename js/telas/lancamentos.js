@@ -35,26 +35,32 @@ export default function lancamentos(ctx) {
   for (const { l, i } of itens) {
     if (l.tipo === 'receita') entradas += l.valor;
     else if (l.tipo === 'despesa' || l.tipo === 'fatura') saidas += l.valor;
-    const chave = l.tipo === 'cartao' ? '~cartao' : l.data || '~semdata';
+    // em aberto não entra por data: fica em dois blocos próprios, "A receber" e "A pagar"
+    const aberto = l.tipo !== 'transferencia' && l.tipo !== 'cartao' && D.estaAberto(l);
+    const chave = l.tipo === 'cartao' ? '~cartao' : aberto ? (l.tipo === 'receita' ? '~receber' : '~pagar') : l.data || '~semdata';
     if (!grupos.has(chave)) grupos.set(chave, []);
     grupos.get(chave).push({ l, i });
   }
-  // sem data primeiro, depois datas (mais novas antes), cartão por último
+  // a receber e a pagar primeiro (sem data), depois os dias (mais novos antes), cartão por último
   const ordem = [...grupos.keys()].sort((a, b) => {
-    const peso = (k) => (k === '~semdata' ? 2 : k === '~cartao' ? 0 : 1);
+    const peso = (k) => (k === '~receber' ? 4 : k === '~pagar' ? 3 : k === '~semdata' ? 2 : k === '~cartao' ? 0 : 1);
     return peso(b) - peso(a) || (peso(a) === 1 ? b.localeCompare(a) : 0);
   });
 
   const blocos = ordem.map((k) => {
-    const lista = grupos.get(k).sort((a, b) => b.i - a.i).map((x) => x.l);
+    const emAberto = k === '~receber' || k === '~pagar';
+    const lista = grupos.get(k).sort((a, b) => (emAberto ? (a.l.data || '9999').localeCompare(b.l.data || '9999') || a.i - b.i : b.i - a.i)).map((x) => x.l);
     let titulo, direita = '';
-    if (k === '~semdata') titulo = 'SEM DATA · EM ABERTO';
+    if (k === '~semdata') titulo = 'SEM DATA';
+    else if (emAberto) {
+      titulo = k === '~receber' ? 'A RECEBER' : 'A PAGAR';
+      direita = `<span class="${k === '~receber' ? 'verde' : 'verm'}">${k === '~receber' ? '+' : '−'} R$ ${num(lista.reduce((s, l) => s + l.valor, 0))}</span>`;
+    }
     else if (k === '~cartao') {
       titulo = `CARTÃO · FATURA ${mesNome(filtro.mes).toUpperCase()}`;
       direita = `− R$ ${num(lista.reduce((s, l) => s + l.valor, 0))}`;
     } else {
-      const todosAbertos = lista.every((l) => !D.estaPago(l) && l.tipo !== 'transferencia');
-      titulo = dataGrupo(k) + (todosAbertos ? ' · PREVISTO' : '');
+      titulo = dataGrupo(k);
       const dia = porDia.get(k);
       if (dia) {
         direita = `<span class="var ${dia.variacao < 0 ? 'verm' : 'verde'}">${sinal(dia.variacao)}</span><b class="saldo-dia ${dia.saldo < 0 ? 'verm' : ''}">Saldo ${reais(dia.saldo)}</b>`;
@@ -63,7 +69,7 @@ export default function lancamentos(ctx) {
         if (liquido) direita = sinal(liquido);
       }
     }
-    return `<div class="grupo"><div class="grupo-tit"><b>${esc(titulo)}</b><span class="dir">${direita}</span></div>
+    return `<div class="grupo" data-grupo="${esc(k)}"><div class="grupo-tit"><b>${esc(titulo)}</b><span class="dir">${direita}</span></div>
       <div class="caixa">${lista.map((l) => linhaItem(l, n)).join('')}</div></div>`;
   });
 
