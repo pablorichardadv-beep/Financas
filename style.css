@@ -156,3 +156,9 @@ a.item { color: inherit; }
 .link.dentro { align-self: flex-start; }
 .folha > .link { align-self: flex-start; }
 .folha input[type="date"] { min-height: 30px; }
+
+/* extrato por conta (Lançamentos com uma conta escolhida) */
+.grupo-tit .dir { display: flex; gap: 10px; align-items: baseline; }
+.grupo-tit .var { font-weight: 600; }
+.grupo-tit .saldo-dia { color: var(--ink); font-weight: 700; }
+.grupo-tit .saldo-dia.verm { color: var(--red); }

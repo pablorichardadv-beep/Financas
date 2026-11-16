@@ -1,11 +1,14 @@
 import { esc } from '../ui.js';
-import { num, hojeISO, mesAtual, mesNome, dataGrupo } from '../format.js';
+import { num, reais, mesAtual, mesNome, mesLongo, dataGrupo } from '../format.js';
 import * as D from '../domain.js';
 import { nomes, linhaItem } from './comum.js';
 import { abrirDetalhe } from './detalhe.js';
 
 // O filtro escolhido fica guardado enquanto o app estiver aberto.
 const filtro = { mes: null, conta: '', cat: '' };
+
+/** Faz a lista abrir no mês indicado (usado depois de salvar um lançamento, para ele aparecer). */
+export const mostrarMesNaLista = (mes) => { filtro.mes = mes; };
 
 export default function lancamentos(ctx) {
   const d = ctx.dados;
@@ -19,6 +22,11 @@ export default function lancamentos(ctx) {
     .filter(({ l }) => D.mesDoLanc(l) === filtro.mes)
     .filter(({ l }) => !filtro.conta || l.conta === filtro.conta || l.conta_origem === filtro.conta || l.conta_destino === filtro.conta)
     .filter(({ l }) => !filtro.cat || l.categoria === filtro.cat);
+
+  // com uma conta escolhida: saldo ao fim de cada dia e saldo atual da conta
+  const ext = filtro.conta ? D.extratoConta(d, filtro.conta) : null;
+  const porDia = new Map((ext?.dias || []).map((x) => [x.data, x]));
+  const sinal = (v) => `${v < 0 ? '−' : '+'} R$ ${num(v)}`;
 
   let entradas = 0, saidas = 0;
   const grupos = new Map();
@@ -45,10 +53,15 @@ export default function lancamentos(ctx) {
     } else {
       const todosAbertos = lista.every((l) => !D.estaPago(l) && l.tipo !== 'transferencia');
       titulo = dataGrupo(k) + (todosAbertos ? ' · PREVISTO' : '');
-      const liquido = lista.filter((l) => D.estaPago(l) && D.ehResultado(l)).reduce((s, l) => s + (l.tipo === 'receita' ? l.valor : -l.valor), 0);
-      if (liquido) direita = `${liquido < 0 ? '−' : '+'} R$ ${num(liquido)}`;
+      const dia = porDia.get(k);
+      if (dia) {
+        direita = `<span class="var ${dia.variacao < 0 ? 'verm' : 'verde'}">${sinal(dia.variacao)}</span><b class="saldo-dia ${dia.saldo < 0 ? 'verm' : ''}">Saldo ${reais(dia.saldo)}</b>`;
+      } else if (!ext) {
+        const liquido = lista.filter((l) => D.estaPago(l) && D.ehResultado(l)).reduce((s, l) => s + (l.tipo === 'receita' ? l.valor : -l.valor), 0);
+        if (liquido) direita = sinal(liquido);
+      }
     }
-    return `<div class="grupo"><div class="grupo-tit"><b>${esc(titulo)}</b><span>${direita}</span></div>
+    return `<div class="grupo"><div class="grupo-tit"><b>${esc(titulo)}</b><span class="dir">${direita}</span></div>
       <div class="caixa">${lista.map((l) => linhaItem(l, n)).join('')}</div></div>`;
   });
 
@@ -62,6 +75,10 @@ export default function lancamentos(ctx) {
       <label class="pilula">${esc(filtro.conta ? n.conta.get(filtro.conta)?.nome : 'Todas as contas')}<select data-f="conta" aria-label="Conta">${opcao('', 'Todas as contas', !filtro.conta)}${d.contas.map((c) => opcao(c.id, c.nome, c.id === filtro.conta)).join('')}</select></label>
       <label class="pilula">${esc(filtro.cat ? n.cat.get(filtro.cat)?.nome : 'Categorias')}<select data-f="cat" aria-label="Categoria">${opcao('', 'Todas as categorias', !filtro.cat)}${cats.map((c) => opcao(c.id, `${c.nome} (${c.tipo})`, c.id === filtro.cat)).join('')}</select></label>
     </div>
+    ${ext ? `<div class="dois" aria-label="Saldo da conta">
+      <div class="card mini"><span class="rot">Saldo atual · ${esc(n.conta.get(filtro.conta)?.nome)}</span><span class="num ${ext.atual < 0 ? 'verm' : ''}">${reais(ext.atual)}</span></div>
+      <div class="card mini"><span class="rot">No início de ${esc(mesLongo(filtro.mes).split(' de ')[0].toLowerCase())}</span><span class="num ${D.saldoAntesDe(ext, filtro.mes + '-01') < 0 ? 'verm' : ''}">${reais(D.saldoAntesDe(ext, filtro.mes + '-01'))}</span></div>
+    </div>` : ''}
     <div class="dois-res">
       <div><span class="rot">Entradas</span><b class="verde">+ R$ ${num(entradas)}</b></div>
       <div><span class="rot">Saídas</span><b class="verm">− R$ ${num(saidas)}</b></div>

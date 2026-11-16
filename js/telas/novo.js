@@ -3,6 +3,7 @@ import { esc, ligarCampoValor } from '../ui.js';
 import { abrirEditorCategoria } from './cadastros.js';
 import { num, hojeISO, dataRelativa, norm, novoId } from '../format.js';
 import * as D from '../domain.js';
+import { mostrarMesNaLista } from './lancamentos.js';
 
 const SIT = {
   despesa: [['pago', 'Paga'], ['aberto', 'A pagar'], ['atrasado', 'Atrasada'], ['guardar', 'Guardar']],
@@ -130,7 +131,8 @@ export default function novo(ctx, args) {
     try {
       await ctx.gravar(ops.filter(Boolean));
       ctx.aviso(idEdicao ? 'Alterações salvas' : 'Lançamento salvo');
-      ctx.ir('');
+      mostrarMesNaLista(dados.data.slice(0, 7));
+      ctx.ir('lancamentos');
     } catch (e) {
       msg.textContent = 'Não foi possível salvar: ' + e;
       raiz.querySelector('[data-salvar]').disabled = false;

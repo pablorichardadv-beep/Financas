@@ -27,6 +27,45 @@ export function saldosContas(d) {
   }
   return s;
 }
+
+/** Quanto um lançamento PAGO mexe no saldo de uma conta (0 se não mexe ou se ainda está em aberto). */
+export function efeitoNaConta(l, id) {
+  if (!estaPago(l)) return 0;
+  if (l.tipo === 'receita') return l.conta === id ? l.valor : 0;
+  if (l.tipo === 'despesa') return l.conta === id ? -l.valor : 0;
+  if (l.tipo === 'transferencia') return (l.conta_origem === id ? -l.valor : 0) + (l.conta_destino === id ? l.valor : 0);
+  return 0;
+}
+
+/**
+ * Extrato da conta dia a dia.
+ *  - base: saldo inicial + o que foi pago sem data;
+ *  - dias: [{ data, variacao, saldo }] em ordem crescente, só dias em que a conta se mexeu; saldo = saldo ao fim do dia;
+ *  - atual: saldo atual (igual ao de saldosContas).
+ */
+export function extratoConta(d, id) {
+  let base = d.contas.find((c) => c.id === id)?.saldo_abertura || 0;
+  const porDia = new Map();
+  for (const l of d.lancamentos) {
+    const e = efeitoNaConta(l, id);
+    if (!e) continue;
+    if (!l.data) base += e;
+    else porDia.set(l.data, (porDia.get(l.data) || 0) + e);
+  }
+  let acc = base;
+  const dias = [...porDia.keys()].sort().map((data) => {
+    acc += porDia.get(data);
+    return { data, variacao: porDia.get(data), saldo: acc };
+  });
+  return { base, dias, atual: acc };
+}
+
+/** Saldo da conta antes de começar o dia `data` (ex.: no início do mês). */
+export function saldoAntesDe(extrato, data) {
+  let s = extrato.base;
+  for (const x of extrato.dias) { if (x.data >= data) break; s = x.saldo; }
+  return s;
+}
 export const totalContas = (d) => soma(Object.values(saldosContas(d)));
 
 const maisRecentePrimeiro = (a, b) => (b.data || '').localeCompare(a.data || '') || String(b.id).localeCompare(String(a.id));
