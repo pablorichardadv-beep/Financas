@@ -19,7 +19,9 @@ export default function novo(ctx, args) {
   const d = ctx.dados;
   const idEdicao = args[0] || null;
   const f = estadoInicial(d, idEdicao);
-  if (!idEdicao && preparo) { Object.assign(f, preparo); f.tipo = 'despesa'; f.situacao = 'pago'; preparo = null; }
+  // quem abriu o formulário (ex.: tela do cartão) pode pedir para voltar para ela depois de salvar
+  const voltar = (!idEdicao && preparo && preparo.voltar) || null;
+  if (!idEdicao && preparo) { const { voltar: _v, ...resto } = preparo; Object.assign(f, resto); f.tipo = 'despesa'; f.situacao = 'pago'; preparo = null; }
   if (f.cartao && !f.cartao_id && !f.legado) f.cartao_id = D.ultimoCartaoUsado(d);
   if (f.erroCarga) return { html: `<div class="fixo-form"><div class="form-topo"><a href="#/lancamentos">Voltar</a><h1>Lançamento</h1><span style="width:60px"></span></div><p class="vazio">${esc(f.mensagem || 'Lançamento não encontrado.')}</p></div>` };
   const memoria = D.memoriaDescricoes(d);
@@ -108,7 +110,7 @@ export default function novo(ctx, args) {
     }
 
     return `<div class="fixo-form">
-      <div class="form-topo"><a href="#/lancamentos" data-cancelar>Cancelar</a><h1>${idEdicao ? 'Editar lançamento' : 'Novo lançamento'}</h1><span style="width:60px"></span></div>
+      <div class="form-topo"><a href="#/${voltar ? voltar.rota : 'lancamentos'}" data-cancelar>Cancelar</a><h1>${idEdicao ? 'Editar lançamento' : 'Novo lançamento'}</h1><span style="width:60px"></span></div>
       <div class="corpo">${corpo.join('')}</div>
       <div class="rodape"><div class="erro" id="erro" role="alert"></div><button class="btn" data-salvar>${idEdicao ? 'Salvar alterações' : 'Salvar'}</button></div></div>`;
   }
@@ -196,8 +198,7 @@ export default function novo(ctx, args) {
     try {
       await ctx.gravar(ops.filter(Boolean));
       ctx.aviso(idEdicao ? 'Alterações salvas' : 'Lançamento salvo');
-      mostrarMesNaLista(mesLista);
-      ctx.ir('lancamentos');
+      if (voltar) { voltar.aoSalvar?.(mesLista); ctx.ir(voltar.rota); } else { mostrarMesNaLista(mesLista); ctx.ir('lancamentos'); }
     } catch (e) {
       msg.textContent = 'Não foi possível salvar: ' + e;
       raiz.querySelector('[data-salvar]').disabled = false;

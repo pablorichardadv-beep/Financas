@@ -51,7 +51,7 @@ export default function cartao(ctx, args) {
     montar(raiz) {
       raiz.querySelector('[data-editar]').onclick = () => abrirEditorCartao(ctx, c.id);
       raiz.querySelector('[data-mes]').addEventListener('change', (e) => { mesEscolhido = e.target.value; ctx.recarregar(); });
-      raiz.querySelector('[data-compra]').onclick = () => { prepararNovo({ cartao: true, cartao_id: c.id }); ctx.ir('novo'); };
+      raiz.querySelector('[data-compra]').onclick = () => { prepararNovo({ cartao: true, cartao_id: c.id, voltar: { rota: 'cartao/' + c.id, aoSalvar: (mes) => { mesEscolhido = mes; cartaoDoMes = c.id; } } }); ctx.ir('novo'); };
       raiz.querySelectorAll('[data-rec]').forEach((b) => (b.onclick = () => abrirRecorrencia(ctx, b.dataset.rec)));
       raiz.querySelectorAll('.item[data-id]').forEach((b) => (b.onclick = () => abrirDetalhe(ctx, b.dataset.id)));
     },
