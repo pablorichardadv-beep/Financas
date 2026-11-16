@@ -5,7 +5,8 @@ import { nomes, linhaItem } from './comum.js';
 import { abrirDetalhe } from './detalhe.js';
 
 // O filtro escolhido fica guardado enquanto o app estiver aberto.
-const filtro = { mes: null, conta: '', cat: '' };
+const filtro = { mes: null, sit: '', conta: '', cat: '' };
+const SITUACOES = [['', 'Todos'], ['receber', 'A receber'], ['pagar', 'A pagar']];
 
 /** Faz a lista abrir no mês indicado (usado depois de salvar um lançamento, para ele aparecer). */
 export const mostrarMesNaLista = (mes) => { filtro.mes = mes; };
@@ -20,6 +21,7 @@ export default function lancamentos(ctx) {
   const itens = D.itensDaLista(d)
     .map((l, i) => ({ l, i }))
     .filter(({ l }) => D.mesDoLanc(l) === filtro.mes)
+    .filter(({ l }) => D.passaSituacao(l, filtro.sit))
     .filter(({ l }) => !filtro.conta || l.conta === filtro.conta || l.conta_origem === filtro.conta || l.conta_destino === filtro.conta)
     .filter(({ l }) => !filtro.cat || l.categoria === filtro.cat);
 
@@ -72,6 +74,7 @@ export default function lancamentos(ctx) {
     <header class="topo"><h1 class="grande">Lançamentos</h1></header>
     <div class="filtros">
       <label class="pilula on">${esc(mesNome(filtro.mes))}<select data-f="mes" aria-label="Mês">${meses.map((m) => opcao(m, mesNome(m), m === filtro.mes)).join('')}</select></label>
+      <label class="pilula${filtro.sit ? ' on' : ''}">${esc(SITUACOES.find((s) => s[0] === filtro.sit)[1])}<select data-f="sit" aria-label="Situação">${SITUACOES.map(([v, t]) => opcao(v, t, v === filtro.sit)).join('')}</select></label>
       <label class="pilula">${esc(filtro.conta ? n.conta.get(filtro.conta)?.nome : 'Todas as contas')}<select data-f="conta" aria-label="Conta">${opcao('', 'Todas as contas', !filtro.conta)}${d.contas.map((c) => opcao(c.id, c.nome, c.id === filtro.conta)).join('')}</select></label>
       <label class="pilula">${esc(filtro.cat ? n.cat.get(filtro.cat)?.nome : 'Categorias')}<select data-f="cat" aria-label="Categoria">${opcao('', 'Todas as categorias', !filtro.cat)}${cats.map((c) => opcao(c.id, `${c.nome} (${c.tipo})`, c.id === filtro.cat)).join('')}</select></label>
     </div>
@@ -80,9 +83,12 @@ export default function lancamentos(ctx) {
       <div class="card mini"><span class="rot">No início de ${esc(mesLongo(filtro.mes).split(' de ')[0].toLowerCase())}</span><span class="num ${D.saldoAntesDe(ext, filtro.mes + '-01') < 0 ? 'verm' : ''}">${reais(D.saldoAntesDe(ext, filtro.mes + '-01'))}</span></div>
     </div>` : ''}
     <div class="dois-res">
-      <div><span class="rot">Entradas</span><b class="verde">+ R$ ${num(entradas)}</b></div>
-      <div><span class="rot">Saídas</span><b class="verm">− R$ ${num(saidas)}</b></div>
+      ${filtro.sit === 'receber' ? `<div><span class="rot">A receber</span><b class="verde">+ R$ ${num(entradas)}</b></div>`
+        : filtro.sit === 'pagar' ? `<div><span class="rot">A pagar</span><b class="verm">− R$ ${num(saidas)}</b></div>`
+        : `<div><span class="rot">Entradas</span><b class="verde">+ R$ ${num(entradas)}</b></div>
+      <div><span class="rot">Saídas</span><b class="verm">− R$ ${num(saidas)}</b></div>`}
     </div>
+    ${filtro.sit === 'pagar' ? '<p class="nota">Compras no cartão ficam de fora: elas só saem da conta quando você lança o pagamento da fatura.</p>' : ''}
     <div class="grupos">${blocos.length ? blocos.join('') : '<p class="vazio">Nada neste filtro.</p>'}</div>`;
 
   return {

@@ -10,6 +10,9 @@ export const mesDoLanc = (l) => l.mes || (l.data ? l.data.slice(0, 7) : null);
 export const estaPago = (l) => l.situacao === 'pago';
 /** Em aberto = ainda não saiu/entrou em nenhuma conta ("a pagar", "atrasada", "a receber"). "Guardar" fica de fora. */
 export const estaAberto = (l) => l.situacao === 'aberto' || l.situacao === 'atrasado';
+/** Filtro de situação da lista: '' (todos), 'receber' (receitas ainda não recebidas) ou 'pagar' (despesas ainda não pagas). */
+export const passaSituacao = (l, sit) =>
+  !sit || (sit === 'receber' ? l.tipo === 'receita' && estaAberto(l) : sit === 'pagar' ? l.tipo === 'despesa' && estaAberto(l) : true);
 export const ehResultado = (l) => l.tipo === 'receita' || l.tipo === 'despesa';
 
 // ---------- saldos ----------

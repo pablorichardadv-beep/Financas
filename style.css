@@ -177,3 +177,4 @@ a.item { color: inherit; }
 .mes-honor .barra-fina { display: block; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 5px; }
 .mes-honor .barra-fina i { display: block; height: 100%; background: var(--navy); }
 .mes-honor .item { align-items: stretch; }
+.dois-res > div:only-child { grid-column: 1 / -1; }
