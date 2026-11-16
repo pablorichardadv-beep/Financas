@@ -162,3 +162,18 @@ a.item { color: inherit; }
 .grupo-tit .var { font-weight: 600; }
 .grupo-tit .saldo-dia { color: var(--ink); font-weight: 700; }
 .grupo-tit .saldo-dia.verm { color: var(--red); }
+
+/* resumo do mês (receitas, despesas, saldo) e honorários por mês */
+.resumo { display: flex; flex-direction: column; gap: 14px; }
+.resumo .bloco { display: flex; flex-direction: column; }
+.resumo .bloco > h2 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding-bottom: 2px; }
+.resumo .lin { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; font-size: 14.5px; }
+.resumo .lin > span { color: var(--muted); }
+.resumo .lin > b { font-weight: 600; }
+.resumo .lin.tot { border-top: 1px solid var(--line); margin-top: 2px; padding-top: 8px; }
+.resumo .lin.tot > span { color: var(--ink); font-weight: 700; }
+.resumo .lin.tot > b { font-size: 16px; font-weight: 800; }
+.resumo .bloco + .bloco { border-top: 1px solid var(--line2); padding-top: 12px; }
+.mes-honor .barra-fina { display: block; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 5px; }
+.mes-honor .barra-fina i { display: block; height: 100%; background: var(--navy); }
+.mes-honor .item { align-items: stretch; }

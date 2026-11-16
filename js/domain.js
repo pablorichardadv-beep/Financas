@@ -165,6 +165,8 @@ export function resumoMes(d, mes) {
     receitas: rec, recebido: recPago, aReceber: rec - recPago,
     despesas: desp, pagas: despPago, aPagar: desp - despPago,
     saldo: rec - desp,
+    saldoEfetuado: recPago - despPago,                    // o que já aconteceu: recebido menos pago
+    saldoPrevisto: (rec - recPago) - (desp - despPago),   // o que ainda vai acontecer: a receber menos a pagar
   };
 }
 
@@ -206,6 +208,40 @@ export function resumoHonorarios(d, hoje) {
     if (h.vencimento && h.vencimento < hoje) atrasado += h.valor;
   }
   return { aReceber, atrasado, calote };
+}
+
+/**
+ * Honorários a receber por mês de vencimento (só parcelas em aberto). Parcelas sem data ficam à parte (mes: null).
+ * Cada linha: { mes, total, qtd, clientes, atrasado (mês já passado), parcelas }.
+ */
+export function honorariosPorMes(d, hoje) {
+  const por = new Map();
+  const cliente = new Map(d.contratos.map((c) => [c.id, c.cliente]));
+  for (const p of d.honorarios.filter((x) => x.status === 'aberto')) {
+    const mes = p.vencimento ? p.vencimento.slice(0, 7) : null;
+    if (!por.has(mes)) por.set(mes, []);
+    por.get(mes).push(p);
+  }
+  const mesHoje = hoje.slice(0, 7);
+  return [...por.entries()]
+    .sort((a, b) => (a[0] === null) - (b[0] === null) || String(a[0]).localeCompare(String(b[0])))
+    .map(([mes, ps]) => ({
+      mes, total: soma(ps.map((p) => p.valor)), qtd: ps.length,
+      clientes: new Set(ps.map((p) => cliente.get(p.contrato) || '?')).size,
+      atrasado: mes !== null && mes < mesHoje,
+      parcelas: ps.sort((a, b) => (a.vencimento || '').localeCompare(b.vencimento || '')),
+    }));
+}
+
+/** Recorte das linhas por período: 'todos', 'ano' (ano de hoje), 'prox3', 'prox6' ou 'prox12' (a partir do mês de hoje). */
+export function filtrarPeriodoHonorarios(linhas, periodo, hoje) {
+  const m0 = hoje.slice(0, 7);
+  const [a] = hoje.split('-').map(Number);
+  const ate = (k) => somarMesFatura(m0, k - 1);
+  if (periodo === 'ano') return linhas.filter((l) => l.mes && l.mes.startsWith(`${a}-`));
+  const n = { prox3: 3, prox6: 6, prox12: 12 }[periodo];
+  if (n) return linhas.filter((l) => l.mes && l.mes >= m0 && l.mes <= ate(n));
+  return linhas;
 }
 
 /** Soma `k` meses a uma data AAAA-MM-DD mantendo o dia (se o mês for mais curto, usa o último dia dele). */

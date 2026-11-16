@@ -1,8 +1,9 @@
 import { esc } from '../ui.js';
-import { num, reais, mesAtual, mesNome, dataBR } from '../format.js';
+import { reais, mesAtual, mesNome, dataBR } from '../format.js';
 import * as D from '../domain.js';
 
 let mesEscolhido = null;
+const cor = (v) => (v < 0 ? 'verm' : 'verde');
 
 export default function mes(ctx) {
   const d = ctx.dados;
@@ -18,13 +19,20 @@ export default function mes(ctx) {
   const html = `
     <header class="topo"><h1 class="grande">Mês</h1></header>
     <div class="filtros"><label class="pilula on">${esc(mesNome(mesEscolhido))}<select data-mes aria-label="Mês">${meses.map((m) => `<option value="${m}" ${m === mesEscolhido ? 'selected' : ''}>${esc(mesNome(m))}</option>`).join('')}</select></label></div>
-    <section class="card" aria-label="Resumo">
-      <div class="tres">
-        <div><span class="rot">Receitas</span><b class="verde">+ ${num(r.receitas)}</b></div>
-        <div><span class="rot">Despesas</span><b class="verm">− ${num(r.despesas)}</b></div>
-        <div><span class="rot">Saldo</span><b class="azul">${r.saldo < 0 ? '− ' : ''}${num(r.saldo)}</b></div>
-      </div>
-      <div class="legenda"><span>Pagas ${reais(r.pagas)}</span><span>A pagar ${reais(r.aPagar)}</span></div>
+    <section class="card resumo" aria-label="Resumo do mês">
+      <div class="bloco" data-bloco="receitas"><h2>Receitas</h2>
+        <div class="lin"><span>Recebidas</span><b class="verde">${reais(r.recebido)}</b></div>
+        <div class="lin"><span>Previstas</span><b class="verde">${reais(r.aReceber)}</b></div>
+        <div class="lin tot"><span>Total</span><b class="verde">${reais(r.receitas)}</b></div></div>
+      <div class="bloco" data-bloco="despesas"><h2>Despesas</h2>
+        <div class="lin"><span>Pagas</span><b class="verm">${reais(r.pagas)}</b></div>
+        <div class="lin"><span>Previstas</span><b class="verm">${reais(r.aPagar)}</b></div>
+        <div class="lin tot"><span>Total</span><b class="verm">${reais(r.despesas)}</b></div></div>
+      <div class="bloco" data-bloco="saldo"><h2>Saldo</h2>
+        <div class="lin"><span>Previsto</span><b class="${cor(r.saldoPrevisto)}">${reais(r.saldoPrevisto)}</b></div>
+        <div class="lin"><span>Efetuado</span><b class="${cor(r.saldoEfetuado)}">${reais(r.saldoEfetuado)}</b></div>
+        <div class="lin tot"><span>Total</span><b class="${cor(r.saldo)}">${reais(r.saldo)}</b></div></div>
+      <p class="nota">Previsto = ainda vai entrar ou sair (lançamentos “a receber” e “a pagar”). Efetuado = recebido menos pago. Compras no cartão entram quando você lança o pagamento da fatura.</p>
     </section>
     <section class="card" aria-label="Despesas por categoria">
       <h2>Despesas por categoria</h2>
