@@ -8,8 +8,9 @@ import mes from './telas/mes.js';
 import contas from './telas/contas.js';
 import honorarios from './telas/honorarios.js';
 import ajustes from './telas/ajustes.js';
+import categorias from './telas/categorias.js';
 
-const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes };
+const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias };
 const raiz = document.getElementById('app');
 
 export const ctx = {
@@ -63,7 +64,14 @@ async function iniciar() {
   }
   window.addEventListener('hashchange', renderizar);
   renderizar();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW:', e));
+  if ('serviceWorker' in navigator) {
+    // Quando uma versão nova do app é instalada, recarrega para usá-la (menos se você estiver preenchendo um lançamento).
+    const tinhaControle = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (tinhaControle && !location.hash.startsWith('#/novo')) location.reload();
+    });
+    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW:', e));
+  }
 }
 
 iniciar();

@@ -1,4 +1,5 @@
 // Auxiliares de interface: escape de HTML, ícones, avisos e folhas (modais).
+import { num } from './format.js';
 
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -51,4 +52,31 @@ export function confirmar(titulo, texto, rotuloOk = 'Confirmar', perigo = false)
     f.el.querySelector('[data-ok]').onclick = () => { respondeu = true; resolve(true); f.fechar(); };
     f.el.querySelector('[data-nao]').onclick = () => f.fechar();
   });
+}
+
+/**
+ * Campo de valor em reais: cada dígito digitado entra como centavo, sempre no fim (como nos apps de banco).
+ * `aoMudar(centavos)` é chamado a cada alteração. Devolve { obter() }.
+ */
+export function ligarCampoValor(input, inicial, aoMudar) {
+  let v = inicial || 0;
+  const mostrar = () => { input.value = 'R$ ' + num(v); aoMudar?.(v); };
+  input.value = 'R$ ' + num(v);
+  input.addEventListener('beforeinput', (e) => {
+    if (e.inputType === 'insertText' && /^\d$/.test(e.data ?? '')) {
+      if (String(v).length < 10) v = v * 10 + Number(e.data);
+    } else if (e.inputType === 'deleteContentBackward') {
+      v = Math.floor(v / 10);
+    } else if (e.inputType === 'insertText' || e.inputType.startsWith('delete')) {
+      // ignora letras e outras teclas
+    } else return; // colar etc. caem no tratamento do evento "input"
+    e.preventDefault();
+    mostrar();
+  });
+  input.addEventListener('input', () => {
+    v = parseInt(input.value.replace(/\D/g, '').slice(0, 10) || '0', 10);
+    mostrar();
+  });
+  input.addEventListener('focus', () => setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0));
+  return { obter: () => v };
 }

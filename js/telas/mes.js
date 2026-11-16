@@ -32,6 +32,7 @@ export default function mes(ctx) {
     </section>
     ${fatura ? `<section class="card" aria-label="Cartão de crédito"><div class="linha-tit"><h2>Fatura do cartão</h2><b class="verm">${reais(fatura)}</b></div>
       <p class="nota">Compras no cartão ficam fora das despesas acima. Elas saem da conta quando você lança o pagamento da fatura (ex.: “Cartão Nubank”).</p></section>` : ''}
+    <a class="link" href="#/categorias" style="justify-content:center">Gerenciar categorias ›</a>
     <p class="nota" style="text-align:center">Metas por categoria (Ideal %) entram na próxima etapa.</p>`;
 
   return {

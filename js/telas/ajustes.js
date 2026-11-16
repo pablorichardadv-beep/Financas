@@ -12,6 +12,11 @@ export default function ajustes(ctx) {
 
   const html = `
     <header class="topo"><h1 class="grande">Ajustes</h1><a class="link" href="#/">Fechar</a></header>
+    <section class="card" style="gap:2px"><h2>Cadastros</h2>
+      <div class="lista">
+        <a class="item" href="#/categorias"><span class="t"><b>Categorias</b><small>Criar, renomear, arquivar ou excluir</small></span><span class="rot">›</span></a>
+        <a class="item" href="#/contas"><span class="t"><b>Contas</b><small>Criar, renomear, arquivar ou excluir</small></span><span class="rot">›</span></a>
+      </div></section>
     <section class="card">
       <h2>Backup dos dados</h2>
       <p class="nota">Seus dados ficam só neste iPhone. Se você apagar o app ou trocar de aparelho, eles se perdem — por isso salve um backup no Dropbox, no iCloud Drive ou em “Arquivos” com frequência.</p>
@@ -22,7 +27,7 @@ export default function ajustes(ctx) {
     </section>
     ${instalado() ? '' : `<section class="card"><h2>Instalar no iPhone</h2>
       <p class="nota">1. Abra este endereço no <b>Safari</b>.<br>2. Toque em <b>Compartilhar</b> (quadrado com seta).<br>3. Escolha <b>Adicionar à Tela de Início</b>.<br>Depois, abra sempre pelo ícone: funciona sem internet.</p></section>`}
-    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 1 · dados da planilha a partir de 01/11/2026.</p></section>`;
+    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 2 · dados da planilha a partir de 01/11/2026.</p></section>`;
 
   return {
     html,

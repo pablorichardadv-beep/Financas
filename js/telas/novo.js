@@ -1,5 +1,6 @@
 // Novo lançamento / edição. Rota: #/novo  ou  #/novo/<id>
-import { esc } from '../ui.js';
+import { esc, ligarCampoValor } from '../ui.js';
+import { abrirEditorCategoria } from './cadastros.js';
 import { num, hojeISO, dataRelativa, norm, novoId } from '../format.js';
 import * as D from '../domain.js';
 
@@ -16,15 +17,15 @@ export default function novo(ctx, args) {
   const memoria = D.memoriaDescricoes(d);
   let raiz;
 
-  const contasOpc = (sel, vazio) => (vazio ? `<option value="">${vazio}</option>` : '') + d.contas.map((c) => `<option value="${esc(c.id)}" ${c.id === sel ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
+  const contasOpc = (sel, vazio) => (vazio ? `<option value="">${vazio}</option>` : '') + D.contasAtivas(d, sel).map((c) => `<option value="${esc(c.id)}" ${c.id === sel ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
   const destinoOpc = () =>
-    d.contas.map((c) => `<option value="c:${esc(c.id)}" ${f.conta_destino === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('') +
+    D.contasAtivas(d, f.conta_destino).map((c) => `<option value="c:${esc(c.id)}" ${f.conta_destino === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('') +
     d.caixinhas.map((c) => `<option value="x:${esc(c.id)}" ${f.destino_caixinha === c.id ? 'selected' : ''}>Caixinha ${esc(c.nome)}</option>`).join('');
 
   function html() {
     const t = f.tipo;
     const aberto = f.situacao !== 'pago';
-    const cats = D.categoriasPorUso(d, t);
+    const cats = D.categoriasPorUso(d, t, f.categoria);
     const sits = SIT[t] || [];
     const corpo = [];
 
@@ -46,7 +47,7 @@ export default function novo(ctx, args) {
       corpo.push(`<div class="${mostrarConta ? 'dois' : ''}">
         ${mostrarConta ? `<div class="campo sel"><label for="conta">${aberto ? 'Conta (opcional)' : t === 'despesa' ? 'Saiu da conta' : 'Entrou na conta'}</label><select id="conta">${contasOpc(f.conta, aberto ? 'Definir depois' : '')}</select></div>` : ''}
         <div class="campo"><label for="data">${aberto ? 'Vencimento' : f.cartao ? 'Data da compra' : 'Data'}</label><input id="data" type="date" value="${esc(f.data)}"></div></div>`);
-      corpo.push(`<div class="campo" style="gap:10px;padding-bottom:14px"><span class="rot">Categoria</span><div class="chips" role="group" aria-label="Categoria">${cats.map((c) => `<button class="chip ${f.categoria === c.id ? 'on' : ''}" data-cat="${esc(c.id)}" aria-pressed="${f.categoria === c.id}">${esc(c.nome)}</button>`).join('')}</div></div>`);
+      corpo.push(`<div class="campo" style="gap:10px;padding-bottom:14px"><span class="rot">Categoria</span><div class="chips" role="group" aria-label="Categoria">${cats.map((c) => `<button class="chip ${f.categoria === c.id ? 'on' : ''}" data-cat="${esc(c.id)}" aria-pressed="${f.categoria === c.id}">${esc(c.nome)}</button>`).join('')}<button class="chip add" data-nova-cat aria-label="Criar nova categoria">+ Nova</button></div></div>`);
       if (!f.cartao && sits.length) {
         corpo.push(`<div class="campo" style="gap:10px;padding-bottom:12px"><span class="rot">Situação</span><div class="seg peq" role="group" aria-label="Situação">${sits.map(([v, r]) => `<button data-sit="${v}" class="${f.situacao === v ? 'on s-' + v : ''}" aria-pressed="${f.situacao === v}">${r}</button>`).join('')}</div></div>`);
       }
@@ -136,7 +137,7 @@ export default function novo(ctx, args) {
       f.categoria = null; f.catManual = false; f.contaManual = false;
       if (f.tipo === 'receita' && !['pago', 'aberto'].includes(f.situacao)) f.situacao = 'pago';
       if (f.tipo !== 'despesa') f.cartao = false;
-      f.conta = D.ultimaContaUsada(d, f.tipo === 'transferencia' ? 'despesa' : f.tipo) || f.conta || 'itau';
+      f.conta = D.ultimaContaUsada(d, f.tipo === 'transferencia' ? 'despesa' : f.tipo) || f.conta || D.contasAtivas(d)[0]?.id || '';
       f.conta_origem = f.conta;
       redesenhar();
     }));
@@ -144,25 +145,11 @@ export default function novo(ctx, args) {
     raiz.querySelectorAll('[data-sit]').forEach((b) => (b.onclick = () => { f.situacao = b.dataset.sit; redesenhar(); }));
     q('[data-cartao]')?.addEventListener('click', () => { f.cartao = !f.cartao; if (f.cartao) f.situacao = 'pago'; redesenhar(); });
 
-    const valor = q('#valor');
-    // Cada dígito entra como centavo (estilo app de banco), sempre no fim, onde quer que o toque tenha caído.
-    valor.addEventListener('beforeinput', (e) => {
-      if (e.inputType === 'insertText' && /^\d$/.test(e.data ?? '')) {
-        if (String(f.valor).length < 10) f.valor = f.valor * 10 + Number(e.data);
-      } else if (e.inputType === 'deleteContentBackward') {
-        f.valor = Math.floor(f.valor / 10);
-      } else if (e.inputType === 'insertText' || e.inputType.startsWith('delete')) {
-        // ignora letras e outras teclas
-      } else return; // colar etc. caem no tratamento do evento "input"
-      e.preventDefault();
-      valor.value = 'R$ ' + num(f.valor);
-    });
-    valor.addEventListener('input', () => {
-      const digitos = valor.value.replace(/\D/g, '').slice(0, 10);
-      f.valor = parseInt(digitos || '0', 10);
-      valor.value = 'R$ ' + num(f.valor);
-    });
-    valor.addEventListener('focus', () => setTimeout(() => valor.setSelectionRange(valor.value.length, valor.value.length), 0));
+    ligarCampoValor(q('#valor'), f.valor, (v) => { f.valor = v; });
+    q('[data-nova-cat]')?.addEventListener('click', () => abrirEditorCategoria(ctx, null, {
+      tipo: f.tipo, semRender: true,
+      aoSalvar: (cat) => { f.categoria = cat.id; f.catManual = true; redesenhar(); },
+    }));
 
     q('#desc')?.addEventListener('input', (e) => { f.descricao = e.target.value; });
     q('#desc')?.addEventListener('change', () => { aplicarMemoria(); });
@@ -189,7 +176,7 @@ export default function novo(ctx, args) {
 
 function estadoInicial(d, id) {
   const base = {
-    tipo: 'despesa', valor: 0, descricao: '', data: hojeISO(), conta: D.ultimaContaUsada(d, 'despesa') || 'itau', conta_origem: null,
+    tipo: 'despesa', valor: 0, descricao: '', data: hojeISO(), conta: D.ultimaContaUsada(d, 'despesa') || D.contasAtivas(d)[0]?.id || '', conta_origem: null,
     conta_destino: null, destino_caixinha: null, categoria: null, situacao: 'pago', cartao: false, catManual: false, contaManual: false,
   };
   base.conta_origem = base.conta;

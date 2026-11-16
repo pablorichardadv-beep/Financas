@@ -1,7 +1,7 @@
 // Folha de detalhes de um lançamento: marcar como paga, editar, excluir.
 import { esc, folha, confirmar } from '../ui.js';
 import { reais, dataBR, hojeISO } from '../format.js';
-import { estaPago, estaAberto } from '../domain.js';
+import { estaPago, estaAberto, contasAtivas } from '../domain.js';
 import { nomes, destinoTransf, tituloItem } from './comum.js';
 
 const SITUACAO = { pago: 'Paga', aberto: 'Em aberto', atrasado: 'Atrasada', guardar: 'Guardar', cartao: 'Compra no cartão' };
@@ -52,10 +52,11 @@ export function abrirDetalhe(ctx, id) {
   const bp = f.el.querySelector('[data-pagar]');
   if (bp) bp.onclick = () => {
     f.fechar();
-    const sug = d.contas.find((c) => c.id === l.conta) || d.contas.find((c) => c.id === 'itau') || d.contas[0];
+    const ativas = contasAtivas(d, l.conta);
+    const sug = ativas.find((c) => c.id === l.conta) || ativas.find((c) => c.id === 'itau') || ativas[0];
     const g = folha(`
       <h2>${l.tipo === 'receita' ? 'Receber em qual conta?' : 'Pagar com qual conta?'}</h2>
-      <div class="campo sel"><label for="pc">Conta</label><select id="pc">${d.contas.map((c) => `<option value="${esc(c.id)}" ${c.id === sug?.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></div>
+      <div class="campo sel"><label for="pc">Conta</label><select id="pc">${ativas.map((c) => `<option value="${esc(c.id)}" ${c.id === sug?.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></div>
       <div class="campo"><label for="pd">Data</label><input id="pd" type="date" value="${hojeISO()}"></div>
       <button class="btn" data-ok>Confirmar</button>`);
     g.el.querySelector('[data-ok]').onclick = async () => {

@@ -129,13 +129,13 @@ export function itensDaLista(d) {
   return [...d.lancamentos, ...cartao];
 }
 
-/** Categorias ordenadas pelas mais usadas (para os chips do formulário). */
-export function categoriasPorUso(d, tipo) {
+/** Categorias ordenadas pelas mais usadas (para os chips do formulário). Arquivadas ficam de fora, exceto `manterId`. */
+export function categoriasPorUso(d, tipo, manterId = null) {
   const uso = new Map();
   for (const l of itensDaLista(d)) if (l.categoria) uso.set(l.categoria, (uso.get(l.categoria) || 0) + 1);
   const alvo = tipo === 'receita' ? 'receita' : 'despesa';
   return d.categorias
-    .filter((c) => c.tipo === alvo)
+    .filter((c) => c.tipo === alvo && (!c.arquivada || c.id === manterId))
     .sort((a, b) => (uso.get(b.id) || 0) - (uso.get(a.id) || 0) || a.codigo - b.codigo);
 }
 
@@ -149,7 +149,8 @@ export function memoriaDescricoes(d) {
 
 export function ultimaContaUsada(d, tipo) {
   const l = [...d.lancamentos].filter((x) => x.tipo === tipo && x.conta && estaPago(x)).sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
-  return l ? l.conta : null;
+  const c = l && d.contas.find((x) => x.id === l.conta);
+  return c && !c.arquivada ? c.id : null;
 }
 
 /** Valida e normaliza um lançamento vindo do formulário. Devolve { erro } ou { ok: objeto }. */
@@ -165,4 +166,69 @@ export function validarLancamento(f) {
     return { erro: 'Escolha a conta.' };
   }
   return { ok: f };
+}
+
+// ---------- cadastro de contas e categorias ----------
+export const contasAtivas = (d, manterId = null) => d.contas.filter((c) => !c.arquivada || c.id === manterId);
+
+/** Quantos lançamentos usam a conta (como conta, origem ou destino). */
+export const usoConta = (d, id) => d.lancamentos.filter((l) => l.conta === id || l.conta_origem === id || l.conta_destino === id).length;
+
+/** Quantos lançamentos e compras no cartão usam a categoria. */
+export const usoCategoria = (d, id) =>
+  d.lancamentos.filter((l) => l.categoria === id).length + d.compras_cartao.filter((k) => k.categoria === id).length;
+
+const slug = (s) => norm(s).replace(/ /g, '_').slice(0, 24) || 'conta';
+
+export function idUnicoConta(d, nome) {
+  const base = slug(nome);
+  let id = base, i = 2;
+  while (d.contas.some((c) => c.id === id)) id = `${base}_${i++}`;
+  return id;
+}
+
+export function idNovaCategoria(d, tipo) {
+  const pre = tipo === 'receita' ? 'r' : 'd';
+  const n = d.categorias.map((c) => Number(String(c.id).replace(/^\D+/, '')) || 0);
+  return { id: `${pre}${Math.max(0, ...n) + 1}`, codigo: Math.max(0, ...d.categorias.map((c) => c.codigo || 0)) + 1 };
+}
+
+const TIPOS_CONTA = ['conta', 'conta_pj', 'dinheiro'];
+
+/** Valida os dados do editor de conta. Devolve { erro } ou { ok }. */
+export function validarConta(d, { id = null, nome, tipo }) {
+  const n = String(nome || '').trim();
+  if (!n) return { erro: 'Informe o nome da conta.' };
+  if (n.length > 30) return { erro: 'Use no máximo 30 letras no nome.' };
+  if (!TIPOS_CONTA.includes(tipo)) return { erro: 'Escolha o tipo da conta.' };
+  if (d.contas.some((c) => c.id !== id && norm(c.nome) === norm(n))) return { erro: 'Já existe uma conta com esse nome.' };
+  return { ok: { nome: n, tipo } };
+}
+
+export function validarCategoria(d, { id = null, nome, tipo }) {
+  const n = String(nome || '').trim();
+  if (!n) return { erro: 'Informe o nome da categoria.' };
+  if (n.length > 30) return { erro: 'Use no máximo 30 letras no nome.' };
+  if (!['despesa', 'receita'].includes(tipo)) return { erro: 'Escolha se é de despesa ou de receita.' };
+  if (d.categorias.some((c) => c.id !== id && c.tipo === tipo && norm(c.nome) === norm(n))) return { erro: 'Já existe uma categoria com esse nome.' };
+  return { ok: { nome: n, tipo } };
+}
+
+/**
+ * O que se pode fazer ao remover uma conta:
+ *  - 'excluir'  : nunca foi usada em lançamento -> pode apagar de vez;
+ *  - 'arquivar' : tem histórico e saldo zero -> some das listas, mas o histórico fica;
+ *  - 'bloqueado': tem histórico e ainda tem saldo -> transferir o saldo antes.
+ */
+export function remocaoConta(d, id) {
+  const uso = usoConta(d, id);
+  if (uso === 0) return { acao: 'excluir', uso };
+  const saldo = saldosContas(d)[id] || 0;
+  if (saldo === 0) return { acao: 'arquivar', uso, saldo };
+  return { acao: 'bloqueado', uso, saldo };
+}
+
+export function remocaoCategoria(d, id) {
+  const uso = usoCategoria(d, id);
+  return { acao: uso === 0 ? 'excluir' : 'arquivar', uso };
 }
