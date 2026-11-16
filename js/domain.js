@@ -2,7 +2,7 @@
 // d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios (parcelas), contratos, cartoes, recorrencias }
 // Todos os valores em CENTAVOS.
 
-import { norm, novoId, hojeISO } from './format.js';
+import { norm, novoId, hojeISO, reais } from './format.js';
 
 const soma = (xs) => xs.reduce((a, b) => a + b, 0);
 
@@ -681,13 +681,14 @@ export function validarConta(d, { id = null, nome, tipo }) {
   return { ok: { nome: n, tipo } };
 }
 
-export function validarCategoria(d, { id = null, nome, tipo }) {
+export function validarCategoria(d, { id = null, nome, tipo, meta = 0 }) {
   const n = String(nome || '').trim();
   if (!n) return { erro: 'Informe o nome da categoria.' };
   if (n.length > 30) return { erro: 'Use no máximo 30 letras no nome.' };
   if (!['despesa', 'receita'].includes(tipo)) return { erro: 'Escolha se é de despesa ou de receita.' };
   if (d.categorias.some((c) => c.id !== id && c.tipo === tipo && norm(c.nome) === norm(n))) return { erro: 'Já existe uma categoria com esse nome.' };
-  return { ok: { nome: n, tipo } };
+  if (!Number.isInteger(meta) || meta < 0) return { erro: 'A meta mensal não pode ser negativa.' };
+  return { ok: { nome: n, tipo, meta: tipo === 'despesa' ? meta : 0 } };
 }
 
 /**
@@ -978,4 +979,83 @@ export function vincularHonorarios(d) {
     mudou = true;
   }
   return { d: mudou ? { ...d, lancamentos: lancs, honorarios: parcelas, contratos } : d, mudou };
+}
+
+
+// ---------- metas, projeção, pendências e gráficos ----------
+/** Dias de `a` até `b` (negativo se `b` é antes de `a`). Datas 'AAAA-MM-DD'. */
+export const diasAte = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+
+/** Metas mensais por categoria de despesa: quanto já foi gasto no mês (compras do cartão contam pela fatura). */
+export function metasDoMes(d, mes) {
+  const gasto = new Map(despesasPorCategoria(d, mes).map((c) => [c.id, c.valor]));
+  return d.categorias.filter((c) => c.tipo === 'despesa' && !c.arquivada && c.meta > 0)
+    .map((c) => { const g = gasto.get(c.id) || 0; return { id: c.id, nome: c.nome, meta: c.meta, gasto: g, pct: g / c.meta, restante: c.meta - g, estourou: g > c.meta }; })
+    .sort((a, b) => b.pct - a.pct);
+}
+
+/**
+ * Projeção do saldo em contas para os próximos meses: parte do saldo de hoje e soma o que ainda vai entrar
+ * (receitas "a receber" e parcelas de honorário sem lançamento) e sair (despesas "a pagar" e faturas de cartão).
+ * O que está atrasado cai no mês atual.
+ */
+export function projecaoMeses(d, hoje, n = 6) {
+  const atual = hoje.slice(0, 7);
+  const meses = Array.from({ length: n }, (_, k) => somarMesFatura(atual, k));
+  const por = new Map(meses.map((m) => [m, { mes: m, entradas: 0, saidas: 0 }]));
+  const poe = (m, campo, v) => { const r = por.get(m < atual ? atual : m); if (r) r[campo] += v; };
+  for (const l of d.lancamentos) {
+    if (!estaAberto(l) || !ehResultado(l)) continue;
+    const m = mesDoLanc(l);
+    if (m) poe(m, l.tipo === 'receita' ? 'entradas' : 'saidas', l.valor);
+  }
+  for (const p of d.honorarios || []) {
+    if (p.status !== 'aberto' || !p.vencimento || lancamentoPrevisto(d, p)) continue;
+    poe(p.vencimento.slice(0, 7), 'entradas', p.valor);
+  }
+  for (const f of faturasEmAberto(d)) poe(f.mes, 'saidas', f.pendente);
+  let acum = totalContas(d);
+  return meses.map((m) => { const r = por.get(m); acum += r.entradas - r.saidas; return { ...r, saldoMes: r.entradas - r.saidas, saldoFinal: acum }; });
+}
+
+/** Receitas e despesas dos últimos `n` meses (até `mesFinal`), para o gráfico. */
+export function serieMeses(d, mesFinal, n = 6) {
+  return Array.from({ length: n }, (_, k) => { const mes = somarMesFatura(mesFinal, k - (n - 1)); const r = resumoMes(d, mes); return { mes, receitas: r.receitas, despesas: r.despesas }; });
+}
+
+/** Onde estamos entre o fechamento anterior e o fechamento da fatura, e quantos dias faltam. */
+export function progressoFatura(c, mes, hoje) {
+  const { vencimento, fechamento } = datasDaFatura(c, mes);
+  const anterior = datasDaFatura(c, somarMesFatura(mes, -1)).fechamento;
+  const pct = Math.min(1, Math.max(0, diasAte(anterior, hoje) / Math.max(1, diasAte(anterior, fechamento))));
+  return { pct, diasParaFechar: diasAte(hoje, fechamento), diasParaVencer: diasAte(hoje, vencimento), fechamento, vencimento };
+}
+
+/** Avisos para o Início: o que merece atenção hoje, do mais urgente para o menos urgente. */
+export function pendenciasHoje(d, hoje) {
+  const out = [];
+  const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  const atrasadas = d.lancamentos.filter((l) => l.tipo === 'despesa' && estaAberto(l) && (l.situacao === 'atrasado' || (l.data && l.data < hoje)));
+  if (atrasadas.length) out.push({ nivel: 'verm', texto: `${plural(atrasadas.length, 'conta a pagar atrasada', 'contas a pagar atrasadas')} (${reais(soma(atrasadas.map((l) => l.valor)))})`, href: '#/lancamentos' });
+  for (const f of faturasEmAberto(d)) {
+    const dias = diasAte(hoje, f.vencimento);
+    const nome = `Fatura ${f.cartao.banco} ••${f.cartao.final}`;
+    if (dias < 0) out.push({ nivel: 'verm', texto: `${nome} venceu há ${plural(-dias, 'dia', 'dias')}: ${reais(f.pendente)}`, href: `#/cartao/${f.cartao.id}` });
+    else if (dias <= 7) out.push({ nivel: 'ouro', texto: `${nome} ${dias === 0 ? 'vence hoje' : dias === 1 ? 'vence amanhã' : `vence em ${dias} dias`}: ${reais(f.pendente)}`, href: `#/cartao/${f.cartao.id}` });
+  }
+  const hon = d.honorarios.filter((p) => p.status === 'aberto' && p.vencimento && p.vencimento < hoje);
+  if (hon.length) out.push({ nivel: 'verm', texto: `${plural(hon.length, 'parcela de honorário atrasada', 'parcelas de honorário atrasadas')} (${reais(soma(hon.map((p) => p.valor)))})`, href: '#/honorarios' });
+  const semCat = d.compras_cartao.filter((k) => !k.categoria && k.fatura >= hoje.slice(0, 7));
+  if (semCat.length) out.push({ nivel: 'ouro', texto: `${plural(semCat.length, 'compra no cartão sem categoria', 'compras no cartão sem categoria')}`, href: '#/semcategoria' });
+  const limite = somarDias(hoje, -30);
+  const paradas = d.caixinhas.filter((c) => !c.arquivada).filter((c) => { const r = resumoCaixinha(d, c.id); return r.saldo > 0 && (!r.atualizadoEm || r.atualizadoEm < limite); });
+  if (paradas.length) out.push({ nivel: 'azul', texto: `${plural(paradas.length, 'caixinha sem rendimento atualizado', 'caixinhas sem rendimento atualizado')} há mais de 30 dias`, href: '#/contas' });
+  const genericas = d.caixinhas.filter((c) => !c.arquivada && norm(c.nome) === 'caixinha');
+  if (genericas.length) out.push({ nivel: 'azul', texto: `${plural(genericas.length, 'caixinha ainda se chama', 'caixinhas ainda se chamam')} “Caixinha”: dê o nome pelo motivo (Viagem, Reserva…)`, href: '#/contas' });
+  return out;
+}
+
+export function somarDias(iso, k) {
+  const dt = new Date(iso + 'T12:00:00'); dt.setDate(dt.getDate() + k);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }

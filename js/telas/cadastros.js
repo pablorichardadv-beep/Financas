@@ -101,13 +101,17 @@ export function abrirEditorCategoria(ctx, id = null, opcoes = {}) {
     <h2>${c ? 'Editar categoria' : 'Nova categoria'}${c?.arquivada ? ' (arquivada)' : ''}</h2>
     <div class="campo"><label for="kn">Nome</label><input id="kn" maxlength="30" autocomplete="off" autocapitalize="sentences" placeholder="Ex.: Pets" value="${esc(c?.nome || '')}"></div>
     ${tipoFixo ? `<p class="nota">Tipo: <b>${tipo === 'receita' ? 'Receita' : 'Despesa'}</b></p>` : `<div class="seg" role="group" aria-label="Tipo da categoria"><button data-tp="despesa" class="${tipo === 'despesa' ? 'on' : ''}" style="${tipo === 'despesa' ? 'background:var(--red);color:#fff' : ''}">Despesa</button><button data-tp="receita" class="${tipo === 'receita' ? 'on' : ''}" style="${tipo === 'receita' ? 'background:var(--green);color:#fff' : ''}">Receita</button></div>`}
+    <div id="kmw" ${tipo === 'despesa' ? '' : 'hidden'}><div class="campo"><label for="km">Meta mensal (opcional)</label><input id="km" inputmode="numeric" autocomplete="off" aria-label="Meta mensal em reais"></div>
+      <p class="nota">Quanto você quer gastar, no máximo, por mês nesta categoria. O Mês mostra quanto falta. Deixe R$ 0,00 para não ter meta.</p></div>
     <div class="erro" id="ke" role="alert"></div>
     <button class="btn" data-salvar>${c ? 'Salvar alterações' : 'Criar categoria'}</button>
     ${acoes}`);
   const q = (s) => f.el.querySelector(s);
+  const meta = ligarCampoValor(q('#km'), c?.meta || 0, undefined, { substituir: true });
 
   f.el.querySelectorAll('[data-tp]').forEach((b) => (b.onclick = () => {
     tipo = b.dataset.tp;
+    q('#kmw').hidden = tipo !== 'despesa';
     f.el.querySelectorAll('[data-tp]').forEach((x) => {
       const on = x.dataset.tp === tipo;
       x.classList.toggle('on', on);
@@ -117,13 +121,13 @@ export function abrirEditorCategoria(ctx, id = null, opcoes = {}) {
   }));
 
   q('[data-salvar]').onclick = async () => {
-    const v = D.validarCategoria(d, { id, nome: q('#kn').value, tipo });
+    const v = D.validarCategoria(d, { id, nome: q('#kn').value, tipo, meta: meta.obter() });
     if (v.erro) { q('#ke').textContent = v.erro; return; }
     let obj;
-    if (c) obj = { ...c, nome: v.ok.nome };
+    if (c) obj = { ...c, nome: v.ok.nome, meta: v.ok.meta };
     else {
       const n = D.idNovaCategoria(d, tipo);
-      obj = { id: n.id, codigo: n.codigo, nome: v.ok.nome, tipo, meta_pct: null };
+      obj = { id: n.id, codigo: n.codigo, nome: v.ok.nome, tipo, meta_pct: null, meta: v.ok.meta };
     }
     f.fechar();
     if (opcoes.semRender) {

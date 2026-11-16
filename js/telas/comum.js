@@ -1,5 +1,6 @@
 // Peças compartilhadas entre as telas.
 import { esc, folha, confirmar } from '../ui.js';
+import { badgeCat } from '../visual.js';
 import { comSinal, dataCurta, dataBR, reais, num, hojeISO } from '../format.js';
 import * as D from '../domain.js';
 
@@ -48,7 +49,9 @@ export function linhaItem(l, n, { comData = false } = {}) {
   }
   const cor = l.tipo === 'receita' ? 'verde' : l.tipo === 'transferencia' ? 'azul' : 'verm';
   const tag = tagDe(l);
-  return `<button class="item" data-id="${esc(l.id)}">
+  const emoji = l.tipo === 'fatura' || l.tipo === 'cartao' ? '💳' : l.tipo === 'transferencia' ? '⇄' : null;
+  const badge = emoji ? `<span class="cbadge" style="--h:215" aria-hidden="true">${emoji}</span>` : badgeCat(l.categoria ? n.cat.get(l.categoria) : null);
+  return `<button class="item" data-id="${esc(l.id)}">${badge}
     <span class="t"><b>${esc(tituloItem(l))}</b><small>${esc(partes.join(' · '))}${tag}</small></span>
     <span class="v ${cor}">${comSinal(l.valor, l.tipo)}</span></button>`;
 }

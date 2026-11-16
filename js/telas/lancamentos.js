@@ -91,7 +91,7 @@ export default function lancamentos(ctx) {
       <div><span class="rot">Saídas</span><b class="verm">− R$ ${num(saidas)}</b></div>`}
     </div>
     ${['pagar', 'pagas'].includes(filtro.sit) ? `<p class="nota">${filtro.sit === 'pagar' ? 'A fatura do cartão em aberto entra aqui com o valor que falta pagar; ' : ''}as compras do cartão, uma a uma, ficam de fora: elas saem da conta quando você paga a fatura.</p>` : ''}
-    <div class="grupos">${blocos.length ? blocos.join('') : '<p class="vazio">Nada neste filtro.</p>'}</div>`;
+    <div class="grupos">${blocos.length ? blocos.join('') : `<p class="vazio">Nada neste filtro${filtro.sit || filtro.conta || filtro.cat ? '. Tente <b>Todos</b> em Situação ou outro mês' : ''}. Para registrar algo, toque no <b>+</b> embaixo.</p>`}</div>`;
 
   return {
     html,

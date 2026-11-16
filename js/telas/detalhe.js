@@ -5,6 +5,7 @@ import * as D from '../domain.js';
 import { abrirRecorrencia, mostrarFatura } from './cartoes.js';
 import { estaPago, estaAberto, contasAtivas, ligadaAEmprestimo, ligadaAHonorario, opsAoExcluirLancamento } from '../domain.js';
 import { nomes, origemTransf, destinoTransf, tituloItem } from './comum.js';
+import { prepararNovo } from './novo.js';
 
 const SITUACAO = { pago: 'Paga', aberto: 'Em aberto', atrasado: 'Atrasada', guardar: 'Guardar', cartao: 'Compra no cartão' };
 
@@ -53,15 +54,26 @@ export function abrirDetalhe(ctx, id) {
   const parcelaPrevista = !ehCartao && l.tipo === 'receita' ? D.parcelaDoLancamento(d, l) : null;
   const podePagar = !ehCartao && l.tipo !== 'transferencia' && !estaPago(l) && (estaAberto(l) || l.situacao === 'guardar');
 
+  const podeRepetir = !daFatura && !doHonorario && !doEmprestimo && l.tipo !== 'transferencia' && !(ehCartao && (l.grupo || l.recorrencia)) && !l.legado;
   const f = folha(`
     <div><h2>${esc(tituloItem(l))}</h2><p class="rot">${esc(l.tipo === 'receita' ? 'Receita' : l.tipo === 'transferencia' ? 'Transferência' : l.tipo === 'cartao' ? 'Cartão de crédito' : 'Despesa')} · <b>${reais(l.valor)}</b></p></div>
     <div class="card" style="gap:0;padding:6px 16px">${linhas.map(([a, b]) => `<div class="item"><span class="rot">${esc(a)}</span><b style="font-size:14.5px">${esc(b)}</b></div>`).join('')}</div>
     ${podePagar ? `<button class="btn" data-pagar>${l.tipo === 'receita' ? 'Marcar como recebida' : 'Marcar como paga'}</button>` : ''}
     ${daFatura ? '<p class="nota">Este lançamento é o pagamento de uma fatura de cartão. Se você excluir, a fatura volta a ficar em aberto e o saldo da conta volta ao que era.</p>' : parcelaPrevista ? '<p class="nota">Este valor é uma parcela de honorário. Ao marcar como recebida, a parcela também é baixada.</p><button class="btn sec" data-editar>Editar</button>' : doHonorario ? '<p class="nota">Este lançamento é o recebimento de um honorário. Para corrigir, abra o honorário em Contas e desfaça o recebimento. Se você excluir este lançamento, a parcela volta para “a receber”.</p>' : doEmprestimo ? '<p class="nota">Este lançamento faz parte de um empréstimo. Para corrigir, exclua-o e registre de novo pela tela do empréstimo.</p>' : '<button class="btn sec" data-editar>Editar</button>'}
+    ${podeRepetir ? '<button class="btn sec" data-repetir>Repetir este lançamento</button>' : ''}
     <button class="btn perigo" data-excluir>${irmas.length > 1 ? 'Excluir só esta parcela' : 'Excluir'}</button>
     ${recAtiva ? '<button class="btn sec" data-recorrencia>Mudar valor ou cancelar a recorrência</button>' : ''}
     ${irmas.length > 1 ? `<button class="btn perigo" data-excluir-todas>Excluir as ${irmas.length} parcelas da compra</button>` : ''}`);
 
+  f.el.querySelector('[data-repetir]')?.addEventListener('click', () => {
+    f.fechar();
+    prepararNovo({
+      manter: true, tipo: ehCartao ? 'despesa' : l.tipo, valor: l.valor, descricao: (l.descricao || '').replace(/ \(\d+\/\d+\)$/, ''),
+      data: hojeISO(), conta: ehCartao ? undefined : l.conta || undefined, categoria: l.categoria || null, situacao: 'pago', cartao: ehCartao, cartao_id: ehCartao ? l.cartao || null : null,
+      catManual: true, contaManual: true,
+    });
+    ctx.ir('novo');
+  });
   const be = f.el.querySelector('[data-editar]');
   if (be) be.onclick = () => { f.fechar(); ctx.ir('novo/' + id); };
 

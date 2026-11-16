@@ -5,6 +5,7 @@ import { abrirEditorConta, nomeTipoConta } from './cadastros.js';
 import { abrirEditorCaixinha } from './caixinhas.js';
 import { abrirEditorEmprestimo, nomeSentido } from './emprestimos.js';
 import { abrirEditorCartao } from './cartoes.js';
+import { ajuda, ligarAjudas } from '../visual.js';
 
 // grupos do resumo que estão abertos (vale enquanto o app estiver aberto)
 const abertos = new Set();
@@ -70,7 +71,7 @@ export default function contas(ctx) {
 
   const html = `
     <header class="topo"><h1 class="grande">Contas</h1><button class="btn-ic" data-nova-conta aria-label="Nova conta">${icone.mais()}</button></header>
-    <section class="saldo"><div><div class="eyebrow">RESUMO · SALDO GERAL</div><div class="valor">${reais(g.total)}</div></div>
+    <section class="saldo"><div><div class="eyebrow">RESUMO · SALDO GERAL ${ajuda('contas')}</div><div class="valor">${reais(g.total)}</div></div>
       <button class="claro" data-expandir>${todosAbertos ? 'Recolher tudo' : 'Ver o saldo de todas as contas'}</button></section>
     <section class="card res-contas" style="gap:0">${grupos.map(grupoHtml).join('')}
       <p class="nota">Cartões mostram o que falta pagar da fatura em aberto; a que vence até o fim do mês já está descontada em “Em aberto” no saldo geral. Toque em um grupo para ver o saldo de cada conta.</p></section>
@@ -83,6 +84,7 @@ export default function contas(ctx) {
   return {
     html,
     montar(raiz) {
+      ligarAjudas(raiz);
       raiz.querySelectorAll('[data-nova-conta]').forEach((b) => (b.onclick = () => abrirEditorConta(ctx, null)));
       raiz.querySelector('[data-nova-cx]').onclick = () => abrirEditorCaixinha(ctx, null);
       raiz.querySelector('[data-novo-cartao]').onclick = () => abrirEditorCartao(ctx, null);

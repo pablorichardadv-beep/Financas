@@ -21,7 +21,7 @@ export default function novo(ctx, args) {
   const f = estadoInicial(d, idEdicao);
   // quem abriu o formulário (ex.: tela do cartão) pode pedir para voltar para ela depois de salvar
   const voltar = (!idEdicao && preparo && preparo.voltar) || null;
-  if (!idEdicao && preparo) { const { voltar: _v, ...resto } = preparo; Object.assign(f, resto); f.tipo = 'despesa'; f.situacao = 'pago'; preparo = null; }
+  if (!idEdicao && preparo) { const { voltar: _v, manter, ...resto } = preparo; Object.assign(f, resto); if (!manter) { f.tipo = 'despesa'; f.situacao = 'pago'; } preparo = null; }
   if (f.cartao && !f.cartao_id && !f.legado) f.cartao_id = D.ultimoCartaoUsado(d);
   if (f.erroCarga) return { html: `<div class="fixo-form"><div class="form-topo"><a href="#/lancamentos">Voltar</a><h1>Lançamento</h1><span style="width:60px"></span></div><p class="vazio">${esc(f.mensagem || 'Lançamento não encontrado.')}</p></div>` };
   const memoria = D.memoriaDescricoes(d);

@@ -42,7 +42,7 @@ export default function contrato(ctx, args) {
       <div><div class="barra" role="img" aria-label="${pct}% recebido"><i style="width:${pct}%;background:#fff"></i><i style="width:${100 - pct}%;background:rgba(255,255,255,.25)"></i></div></div>
     </section>
     <section class="card" style="gap:2px"><div class="linha-tit"><h2>Parcelas</h2><button class="link" data-nova-parcela>+ Parcela</button></div>
-      <div class="lista">${r.parcelas.length ? r.parcelas.map(linha).join('') : '<p class="vazio">Nenhuma parcela. Toque em “+ Parcela”.</p>'}</div></section>
+      <div class="lista">${r.parcelas.length ? r.parcelas.map(linha).join('') : '<p class="vazio">Nenhuma parcela ainda. Toque em <b>“+ Parcela”</b> para informar o valor e o vencimento de cada uma.</p>'}</div></section>
     ${r.soma !== c.total ? `<p class="nota" style="text-align:center">As parcelas somam <b>${reais(r.soma)}</b> e o total do honorário é <b>${reais(c.total)}</b>. Se for de propósito (entrada, juros), tudo bem.</p>` : ''}
     <p class="nota" style="text-align:center">Toque em uma parcela para mudar o valor ou o vencimento, marcar como recebida ou como calote. Ao receber, o app lança a receita na conta escolhida.</p>`;
 

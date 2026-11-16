@@ -26,7 +26,13 @@ export default function honorarios(ctx) {
     if (s.situacao === 'aberto') partes.push(`${s.qtdAbertas} em aberto${s.proxima ? ' · próxima ' + dataBR(s.proxima.vencimento) : ''}`);
     const tag = s.atrasado ? '<span class="tag verm">Atrasado</span>' : s.calote && s.situacao === 'aberto' ? '<span class="tag verm">Tem calote</span>' : '';
     const valor = s.situacao === 'calote' ? s.calote : s.situacao === 'quitado' ? s.recebido : s.aReceber;
-    return `<a class="item" href="#/honorario/${esc(c.id)}"><span class="t"><b>${esc(c.cliente)}</b><small>${partes.join(' · ')}${tag}</small></span>
+    const ps = d.honorarios.filter((p) => p.contrato === c.id);
+    const pagas = ps.filter((p) => p.status === 'pago').length;
+    const atras = ps.filter((p) => p.status === 'aberto' && p.vencimento && p.vencimento < hoje).length;
+    const perdidas = ps.filter((p) => p.status === 'calote').length;
+    const pc = (n) => (ps.length ? (n / ps.length) * 100 : 0);
+    const progresso = ps.length > 1 ? `<span class="prog-parc" role="img" aria-label="${pagas} de ${ps.length} parcelas recebidas"><span class="seg"><i class="ok" style="width:${pc(pagas)}%"></i><i class="at" style="width:${pc(atras)}%"></i><i class="ca" style="width:${pc(perdidas)}%"></i></span><small>${pagas} de ${ps.length} recebidas${atras ? ` · <b class="verm">${atras} ${atras === 1 ? 'atrasada' : 'atrasadas'}</b>` : ''}</small></span>` : '';
+    return `<a class="item" href="#/honorario/${esc(c.id)}"><span class="t"><b>${esc(c.cliente)}</b><small>${partes.join(' · ')}${tag}</small>${progresso}</span>
       <span class="v ${s.situacao === 'calote' ? 'verm' : ''}">${reais(valor)} <span class="rot">›</span></span></a>`;
   };
   const grupo = (titulo, lista) => (lista.length ? `<section class="card" style="gap:2px"><h2>${titulo}</h2><div class="lista">${lista.map(linhaContrato).join('')}</div></section>` : '');

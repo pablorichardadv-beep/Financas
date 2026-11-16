@@ -58,7 +58,7 @@ export default function emprestimo(ctx, args) {
     </section>
     <button class="btn" data-acao="${tomado ? 'para' : 'de'}">${ACOES[`${e.sentido}/${tomado ? 'para' : 'de'}`].titulo}</button>
     <button class="btn sec" data-acao="${tomado ? 'de' : 'para'}">${ACOES[`${e.sentido}/${tomado ? 'de' : 'para'}`].titulo}</button>
-    <section class="card" style="gap:2px"><h2>Histórico</h2><div class="lista">${r.movs.length ? r.movs.map(linha).join('') : '<p class="vazio">Nenhum movimento ainda.</p>'}</div></section>
+    <section class="card" style="gap:2px"><h2>Histórico</h2><div class="lista">${r.movs.length ? r.movs.map(linha).join('') : '<p class="vazio">Nenhum movimento ainda. Registre cada pagamento recebido para o saldo devedor baixar.</p>'}</div></section>
     <p class="nota" style="text-align:center">${tomado ? 'Pagamentos' : 'Recebimentos'} com uma conta escolhida também entram nos seus lançamentos e mudam o saldo da conta, sem contar como receita ou despesa do mês.</p>`;
 
   return {

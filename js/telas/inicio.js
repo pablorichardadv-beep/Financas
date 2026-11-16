@@ -3,6 +3,7 @@ import { reais, num, hojeISO, mesAtual, mesLongo, saudacaoData } from '../format
 import * as D from '../domain.js';
 import { nomes, linhaItem } from './comum.js';
 import { abrirDetalhe } from './detalhe.js';
+import { ajuda, ligarAjudas } from '../visual.js';
 
 const DIAS_SEM_BACKUP = 7;
 
@@ -33,6 +34,11 @@ export default function inicio(ctx) {
   const faixa = dias !== null && dias >= DIAS_SEM_BACKUP
     ? `<div class="faixa"><span>${d.meta.ultimo_backup ? `Último backup há ${dias} dias.` : 'Você ainda não fez backup.'} Seus dados só existem neste aparelho.</span><button data-backup>Fazer agora</button></div>` : '';
 
+  const pend = D.pendenciasHoje(d, hoje);
+  const faixaHoje = `<section class="card hoje" aria-label="O que precisa de você hoje"><h2>O que precisa de você hoje</h2>${pend.length
+    ? pend.map((p) => `<a class="pend ${p.nivel}" href="${p.href}"><i></i><span>${esc(p.texto)}</span><b>›</b></a>`).join('')
+    : '<p class="tudo-ok">Tudo em dia por aqui. Nada pendente hoje.</p>'}</section>`;
+
   const pctRecebido = r.receitas ? Math.round((r.recebido / r.receitas) * 100) : 0;
 
   const vazioHtml = `
@@ -49,14 +55,15 @@ export default function inicio(ctx) {
     </header>
     ${faixa}
     <section class="saldo" aria-label="Saldo geral">
-      <div><div class="eyebrow">SALDO GERAL</div><div class="valor">${reais(g.total)}</div></div>
+      <div><div class="eyebrow">SALDO GERAL ${ajuda('saldoGeral')}</div><div class="valor">${reais(g.total)}</div></div>
       <div class="grade">
         <a href="#/contas"><span>Em contas</span><span>${reais(g.contas)}</span></a>
         <a href="#/contas"><span>Caixinhas</span><span>${reais(g.caixinhas)}</span></a>
         <a href="#/contas"><span>Empréstimos</span><span>${reais(g.emprestimo)}</span></a>
-        <a href="#/lancamentos"><span>Em aberto</span><span>${reais(g.aberto)}</span></a>
+        <a href="#/lancamentos"><span>Em aberto ${ajuda('emAberto')}</span><span>${reais(g.aberto)}</span></a>
       </div>
     </section>
+    ${faixaHoje}
     <section class="card" aria-label="Resumo do mês">
       <div class="linha-tit"><h2>${mesLongo(mes)}</h2><a class="link" href="#/mes">Ver categorias ›</a></div>
       <div class="tres">
@@ -77,13 +84,14 @@ export default function inicio(ctx) {
     </div>
     <section class="card" style="padding:12px 16px 4px;gap:4px" aria-label="Últimos lançamentos">
       <div class="linha-tit"><h2>Últimos lançamentos</h2><a class="link" href="#/lancamentos">Ver todos ›</a></div>
-      <div class="lista">${ultimos.length ? ultimos.map((l) => linhaItem(l, n, { comData: true })).join('') : '<p class="vazio">Nenhum lançamento ainda. Toque no + para começar.</p>'}</div>
+      <div class="lista">${ultimos.length ? ultimos.map((l) => linhaItem(l, n, { comData: true })).join('') : '<p class="vazio">Nenhum lançamento ainda. Toque no <b>+</b> embaixo para registrar o primeiro.</p>'}</div>
     </section>`;
 
   return {
     html,
     montar(raiz) {
       raiz.querySelectorAll('.item[data-id]').forEach((b) => (b.onclick = () => abrirDetalhe(ctx, b.dataset.id)));
+      ligarAjudas(raiz);
       raiz.querySelector('[data-backup]')?.addEventListener('click', () => ctx.ir('ajustes'));
     },
   };

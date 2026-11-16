@@ -5,6 +5,7 @@ import * as D from '../domain.js';
 import { nomes, linhaItem } from './comum.js';
 import { abrirDetalhe } from './detalhe.js';
 import { prepararNovo } from './novo.js';
+import { ajuda, ligarAjudas } from '../visual.js';
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 let mesEscolhido = null;   // mês da fatura aberta na tela (vale enquanto o app estiver aberto)
@@ -31,6 +32,9 @@ export default function cartao(ctx, args) {
   const emAberto = f.fechamento >= hoje;
   const sit = D.situacaoFatura(d, c, mesEscolhido);
   const SITUACAO_TXT = { aberta: 'Em aberto', parcial: 'Paga em parte', paga: 'Paga', antiga: 'Anterior ao controle', vazia: 'Sem compras' };
+  const prog = D.progressoFatura(c, mesEscolhido, hoje);
+  const diasTxt = sit.status === 'paga' ? 'Fatura paga' : sit.status === 'antiga' || sit.status === 'vazia' ? '' : prog.diasParaVencer > 1 ? `Vence em ${prog.diasParaVencer} dias` : prog.diasParaVencer === 1 ? 'Vence amanhã' : prog.diasParaVencer === 0 ? 'Vence hoje' : `Venceu há ${-prog.diasParaVencer} ${prog.diasParaVencer === -1 ? 'dia' : 'dias'}`;
+  const barraCiclo = prog.diasParaFechar >= 0 || prog.pct < 1 ? `<div class="ciclo"><div class="b" role="img" aria-label="${Math.round(prog.pct * 100)}% do ciclo até o fechamento"><i style="width:${Math.round(prog.pct * 100)}%"></i></div><small>${prog.diasParaFechar > 0 ? `Fecha em ${prog.diasParaFechar} ${prog.diasParaFechar === 1 ? 'dia' : 'dias'}` : prog.diasParaFechar === 0 ? 'Fecha hoje' : 'Fatura fechada'}</small></div>` : '';
   const recs = d.recorrencias.filter((r) => r.cartao === c.id && r.ativa);
 
   const html = `
@@ -38,7 +42,8 @@ export default function cartao(ctx, args) {
     <p class="nota" style="margin-top:-6px">${esc(c.bandeira)} · final ${esc(c.final)} · vence dia ${c.vencimento} · fecha dia ${c.fechamento}${c.arquivado ? ' · arquivado' : ''}</p>
     <div class="filtros"><label class="pilula on">Fatura de ${esc(mesNome(mesEscolhido))}<select data-mes aria-label="Fatura">${meses.map((m) => `<option value="${m}" ${m === mesEscolhido ? 'selected' : ''}>${esc(mesNome(m))}</option>`).join('')}</select></label></div>
     <section class="saldo" aria-label="Fatura">
-      <div><div class="eyebrow">FATURA ${esc(mesNome(mesEscolhido).toUpperCase())}</div><div class="valor">${reais(f.total)}</div></div>
+      <div><div class="eyebrow">FATURA ${esc(mesNome(mesEscolhido).toUpperCase())} ${ajuda('fatura')}</div><div class="valor">${reais(f.total)}</div>${diasTxt ? `<span class="dias-venc ${prog.diasParaVencer < 0 && sit.pendente > 0 ? 'atraso' : ''}" data-dias>${diasTxt}</span>` : ''}</div>
+      ${sit.status === 'antiga' || sit.status === 'vazia' ? '' : barraCiclo}
       <div class="grade">
         <div><span>Vencimento</span><span>${dataBR(f.vencimento)}</span></div>
         <div><span>${emAberto ? 'Fecha em' : 'Fechou em'}</span><span>${dataBR(f.fechamento)}</span></div>
@@ -52,7 +57,7 @@ export default function cartao(ctx, args) {
       <p class="nota">Toque em um pagamento para excluir. A fatura volta a ficar em aberto.</p></section>` : ''}
     ${sit.status === 'antiga' ? '<p class="nota">Esta fatura é anterior ao controle de pagamento do app: ela não entra em “a pagar” nem nos lançamentos em aberto.</p>' : ''}
     <section class="card" style="gap:2px"><h2>Compras da fatura</h2>
-      <div class="lista">${f.compras.length ? f.compras.map((k) => linhaItem({ id: k.id, tipo: 'cartao', data: null, data_compra: k.data, mes: k.fatura, descricao: k.descricao, valor: k.valor, categoria: k.categoria, situacao: 'cartao', cartao_id: null }, n, { comData: true })).join('') : '<p class="vazio">Nenhuma compra nesta fatura.</p>'}</div></section>
+      <div class="lista">${f.compras.length ? f.compras.map((k) => linhaItem({ id: k.id, tipo: 'cartao', data: null, data_compra: k.data, mes: k.fatura, descricao: k.descricao, valor: k.valor, categoria: k.categoria, situacao: 'cartao', cartao_id: null }, n, { comData: true })).join('') : '<p class="vazio">Nenhuma compra nesta fatura. Toque em <b>+ Compra neste cartão</b> para lançar a primeira.</p>'}</div></section>
     ${recs.length ? `<section class="card" style="gap:2px"><h2>Compras recorrentes</h2>
       <div class="lista">${recs.map((r) => `<button class="item" data-rec="${esc(r.id)}"><span class="t"><b>${esc(r.descricao)}</b><small>todo dia ${r.dia}${n.cat.get(r.categoria) ? ' · ' + esc(n.cat.get(r.categoria).nome) : ''}</small></span><span class="v verm">${reais(r.valor)} <span class="rot">›</span></span></button>`).join('')}</div>
       <p class="nota">Cai todo mês na fatura até você cancelar. Toque para mudar o valor ou cancelar.</p></section>` : ''}
@@ -61,6 +66,7 @@ export default function cartao(ctx, args) {
   return {
     html,
     montar(raiz) {
+      ligarAjudas(raiz);
       raiz.querySelector('[data-editar]').onclick = () => abrirEditorCartao(ctx, c.id);
       raiz.querySelector('[data-mes]').addEventListener('change', (e) => { mesEscolhido = e.target.value; ctx.recarregar(); });
       raiz.querySelector('[data-pagar]')?.addEventListener('click', () => abrirPagarFatura(ctx, c, sit));

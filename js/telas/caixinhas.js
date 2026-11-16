@@ -30,9 +30,10 @@ export default function caixinha(ctx, args) {
         <div><span>Rendimento atualizado em</span><span>${r.atualizadoEm ? dataBR(r.atualizadoEm) : 'ainda não'}</span></div>
       </div>
     </section>
+    ${norm(c.nome) === 'caixinha' ? '<p class="nota">Dê um nome pelo motivo desta caixinha (Viagem, Reserva, IPTU…): toque em <b>Editar</b>. Fica bem mais fácil de entender no resumo.</p>' : ''}
     <button class="btn" data-rend>Atualizar rendimento</button>
     <div class="dois"><button class="btn sec" data-aporte>Aportar</button><button class="btn sec" data-resgate>Resgatar</button></div>
-    <section class="card" style="gap:2px"><h2>Histórico</h2><div class="lista">${r.movs.length ? r.movs.map(linha).join('') : '<p class="vazio">Nenhum movimento ainda.</p>'}</div></section>
+    <section class="card" style="gap:2px"><h2>Histórico</h2><div class="lista">${r.movs.length ? r.movs.map(linha).join('') : '<p class="vazio">Nenhum movimento ainda. Use <b>Aportar</b> para guardar dinheiro e <b>Atualizar rendimento</b> para registrar o que rendeu.</p>'}</div></section>
     <p class="nota" style="text-align:center">Rendimento: informe o saldo que aparece no banco e a data. O app calcula a diferença e registra como rendimento, sem precisar lançar dia a dia.</p>`;
 
   return {
