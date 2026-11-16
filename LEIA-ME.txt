@@ -1,0 +1,23 @@
+CONTROLE FINANCEIRO — instalação (uma vez só)
+
+1) COLOCAR O APP NA INTERNET (só o código, nenhum dado seu)
+   Suba esta pasta inteira em uma hospedagem de sites estáticos com HTTPS
+   (por exemplo Netlify, arrastando a pasta, ou GitHub Pages). Guarde o endereço gerado.
+   A hospedagem não recebe seus lançamentos: eles ficam só no iPhone.
+
+2) INSTALAR NO IPHONE
+   Abra o endereço no Safari > Compartilhar > Adicionar à Tela de Início.
+   Abra o app uma vez com internet (ele baixa os arquivos) e depois use sempre pelo ícone.
+
+3) CARREGAR OS DADOS
+   Coloque o arquivo dados-iniciais.json no Dropbox/iCloud (app Arquivos).
+   No app: Início > Carregar dados iniciais (ou Ajustes > Restaurar backup ou carregar dados)
+   e escolha o arquivo. Depois apague o arquivo da nuvem se não quiser mantê-lo lá.
+
+4) BACKUP
+   Ajustes > Salvar backup, e escolha Arquivos/Dropbox. Faça com frequência: se o app for
+   apagado ou o aparelho trocado, o backup é a única cópia dos dados.
+
+5) ATUALIZAR O APP NO FUTURO
+   Suba a pasta nova no mesmo endereço (com o número de VERSAO do arquivo sw.js trocado).
+   Os dados do iPhone não são apagados.
