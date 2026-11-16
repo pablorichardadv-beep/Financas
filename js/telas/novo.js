@@ -13,14 +13,18 @@ export default function novo(ctx, args) {
   const d = ctx.dados;
   const idEdicao = args[0] || null;
   const f = estadoInicial(d, idEdicao);
-  if (f.erroCarga) return { html: `<div class="fixo-form"><div class="form-topo"><a href="#/lancamentos">Voltar</a><h1>Lançamento</h1><span style="width:60px"></span></div><p class="vazio">Lançamento não encontrado.</p></div>` };
+  if (f.erroCarga) return { html: `<div class="fixo-form"><div class="form-topo"><a href="#/lancamentos">Voltar</a><h1>Lançamento</h1><span style="width:60px"></span></div><p class="vazio">${esc(f.mensagem || 'Lançamento não encontrado.')}</p></div>` };
   const memoria = D.memoriaDescricoes(d);
   let raiz;
 
   const contasOpc = (sel, vazio) => (vazio ? `<option value="">${vazio}</option>` : '') + D.contasAtivas(d, sel).map((c) => `<option value="${esc(c.id)}" ${c.id === sel ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
+  const caixinhasAtivas = (manter) => d.caixinhas.filter((c) => !c.arquivada || c.id === manter);
+  const origemOpc = () =>
+    D.contasAtivas(d, f.conta_origem).map((c) => `<option value="${esc(c.id)}" ${f.conta_origem === c.id && !f.origem_caixinha ? 'selected' : ''}>${esc(c.nome)}</option>`).join('') +
+    caixinhasAtivas(f.origem_caixinha).map((c) => `<option value="x:${esc(c.id)}" ${f.origem_caixinha === c.id ? 'selected' : ''}>Caixinha ${esc(D.rotuloCaixinha(c))}</option>`).join('');
   const destinoOpc = () =>
     D.contasAtivas(d, f.conta_destino).map((c) => `<option value="c:${esc(c.id)}" ${f.conta_destino === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('') +
-    d.caixinhas.map((c) => `<option value="x:${esc(c.id)}" ${f.destino_caixinha === c.id ? 'selected' : ''}>Caixinha ${esc(c.nome)}</option>`).join('');
+    caixinhasAtivas(f.destino_caixinha).map((c) => `<option value="x:${esc(c.id)}" ${f.destino_caixinha === c.id ? 'selected' : ''}>Caixinha ${esc(D.rotuloCaixinha(c))}</option>`).join('');
 
   function html() {
     const t = f.tipo;
@@ -39,7 +43,7 @@ export default function novo(ctx, args) {
 
     if (t === 'transferencia') {
       corpo.push(`<div class="dois">
-        <div class="campo sel"><label for="orig">Saiu da conta</label><select id="orig">${contasOpc(f.conta_origem)}</select></div>
+        <div class="campo sel"><label for="orig">Saiu de</label><select id="orig">${origemOpc()}</select></div>
         <div class="campo sel"><label for="dest">Entrou em</label><select id="dest"><option value="">Escolher…</option>${destinoOpc()}</select></div></div>
         <div class="campo"><label for="data">Data</label><input id="data" type="date" value="${esc(f.data)}"></div>`);
     } else {
@@ -87,7 +91,10 @@ export default function novo(ctx, args) {
   async function salvar() {
     const msg = raiz.querySelector('#erro');
     const dados = { ...f };
-    if (dados.tipo === 'transferencia' && !dados.descricao) dados.descricao = 'Transferência entre contas';
+    if (dados.tipo === 'transferencia' && !dados.descricao) {
+      const cx = (id) => { const c = d.caixinhas.find((x) => x.id === id); return c ? D.rotuloCaixinha(c) : ''; };
+      dados.descricao = dados.destino_caixinha ? `Aporte – ${cx(dados.destino_caixinha)}` : dados.origem_caixinha ? `Resgate – ${cx(dados.origem_caixinha)}` : 'Transferência entre contas';
+    }
     const v = D.validarLancamento(dados);
     if (v.erro) { msg.textContent = v.erro; return; }
     raiz.querySelector('[data-salvar]').disabled = true;
@@ -99,25 +106,26 @@ export default function novo(ctx, args) {
       const id = eraCartao ? base : novoId('k');
       ops.push(['put', 'compras_cartao', { id, fatura: dados.data.slice(0, 7), data: dados.data, descricao: dados.descricao.trim(), valor: dados.valor, categoria: dados.categoria || null }]);
       if (base && !eraCartao) ops.push(['del', 'lancamentos', base]);
+    } else if (dados.tipo === 'transferencia') {
+      const idL = base && !eraCartao ? base : null;
+      const antigo = idL ? d.lancamentos.find((x) => x.id === idL) : null;
+      const origem = dados.origem_caixinha ? { tipo: 'caixinha', id: dados.origem_caixinha } : { tipo: 'conta', id: dados.conta_origem };
+      const destino = dados.destino_caixinha ? { tipo: 'caixinha', id: dados.destino_caixinha } : { tipo: 'conta', id: dados.conta_destino };
+      ops.push(...D.opsTransferencia(d, { data: dados.data, valor: dados.valor, descricao: dados.descricao.trim(), origem, destino }, { id: idL, antigo }));
+      if (base && eraCartao) ops.push(['del', 'compras_cartao', base]);
     } else {
       const id = base && !eraCartao ? base : novoId('l');
       const l = { id, tipo: dados.tipo, data: dados.data, descricao: dados.descricao.trim(), valor: dados.valor };
-      if (dados.tipo === 'transferencia') {
-        l.conta_origem = dados.conta_origem; l.conta_destino = dados.conta_destino || null; l.situacao = 'pago';
-        if (dados.destino_caixinha) l.destino_caixinha = dados.destino_caixinha;
-      } else {
-        l.conta = dados.conta || null; l.categoria = dados.categoria || null; l.situacao = dados.situacao;
-        if (dados.situacao !== 'pago') l.mes = dados.data.slice(0, 7);
-      }
-      // preserva campos antigos (origem na planilha etc.) ao editar
+      l.conta = dados.conta || null; l.categoria = dados.categoria || null; l.situacao = dados.situacao;
+      if (dados.situacao !== 'pago') l.mes = dados.data.slice(0, 7);
+      // preserva campos antigos (origem na planilha etc.) ao editar; ao deixar de ser transferência, limpa as pontas
       const antigo = base && !eraCartao ? d.lancamentos.find((x) => x.id === base) : null;
-      ops.push(['put', 'lancamentos', antigo ? { ...antigo, ...l, ...(dados.tipo !== 'transferencia' ? { conta_origem: undefined, conta_destino: undefined, destino_caixinha: undefined } : {}) } : l]);
+      const limpas = Object.fromEntries(D.CHAVES_PONTAS.map((k) => [k, undefined]));
+      ops.push(['put', 'lancamentos', antigo ? { ...antigo, ...l, ...limpas } : l]);
       if (base && eraCartao) ops.push(['del', 'compras_cartao', base]);
-      // transferência para caixinha: cria/atualiza o aporte na caixinha
+      // se era transferência para/de caixinha, desfaz os movimentos ligados
       for (const m of d.caixinha_movimentos) if (m.lancamento_id === id) ops.push(['del', 'caixinha_movimentos', m.id]);
-      if (dados.tipo === 'transferencia' && dados.destino_caixinha) {
-        ops.push(['put', 'caixinha_movimentos', { id: novoId('c'), caixinha: dados.destino_caixinha, data: dados.data, descricao: l.descricao, valor: dados.valor, lancamento_id: id }]);
-      }
+      for (const m of d.emprestimo_movimentos) if (m.lancamento_id === id) ops.push(['del', 'emprestimo_movimentos', m.id]);
     }
     try {
       await ctx.gravar(ops.filter(Boolean));
@@ -138,7 +146,7 @@ export default function novo(ctx, args) {
       if (f.tipo === 'receita' && !['pago', 'aberto'].includes(f.situacao)) f.situacao = 'pago';
       if (f.tipo !== 'despesa') f.cartao = false;
       f.conta = D.ultimaContaUsada(d, f.tipo === 'transferencia' ? 'despesa' : f.tipo) || f.conta || D.contasAtivas(d)[0]?.id || '';
-      f.conta_origem = f.conta;
+      f.conta_origem = f.conta; f.origem_caixinha = null; f.conta_destino = null; f.destino_caixinha = null;
       redesenhar();
     }));
     raiz.querySelectorAll('[data-cat]').forEach((b) => (b.onclick = () => { f.categoria = f.categoria === b.dataset.cat ? null : b.dataset.cat; f.catManual = true; redesenhar(); }));
@@ -155,7 +163,11 @@ export default function novo(ctx, args) {
     q('#desc')?.addEventListener('change', () => { aplicarMemoria(); });
     q('#data')?.addEventListener('change', (e) => { f.data = e.target.value; });
     q('#conta')?.addEventListener('change', (e) => { f.conta = e.target.value; f.contaManual = true; });
-    q('#orig')?.addEventListener('change', (e) => { f.conta_origem = e.target.value; });
+    q('#orig')?.addEventListener('change', (e) => {
+      const v = e.target.value;
+      f.origem_caixinha = v.startsWith('x:') ? v.slice(2) : null;
+      f.conta_origem = v.startsWith('x:') ? null : v;
+    });
     q('#dest')?.addEventListener('change', (e) => {
       const [tp, id] = e.target.value.split(':');
       f.conta_destino = tp === 'c' ? id : null;
@@ -177,7 +189,7 @@ export default function novo(ctx, args) {
 function estadoInicial(d, id) {
   const base = {
     tipo: 'despesa', valor: 0, descricao: '', data: hojeISO(), conta: D.ultimaContaUsada(d, 'despesa') || D.contasAtivas(d)[0]?.id || '', conta_origem: null,
-    conta_destino: null, destino_caixinha: null, categoria: null, situacao: 'pago', cartao: false, catManual: false, contaManual: false,
+    conta_destino: null, destino_caixinha: null, origem_caixinha: null, categoria: null, situacao: 'pago', cartao: false, catManual: false, contaManual: false,
   };
   base.conta_origem = base.conta;
   if (!id) return base;
@@ -188,9 +200,10 @@ function estadoInicial(d, id) {
   }
   const l = d.lancamentos.find((x) => x.id === id);
   if (!l) return { erroCarga: true };
+  if (D.ligadaAEmprestimo(l)) return { erroCarga: true, mensagem: 'Este lançamento faz parte de um empréstimo. Para alterá-lo, abra o empréstimo em Contas e exclua o movimento.' };
   return {
     ...base, tipo: l.tipo, valor: l.valor, descricao: l.descricao || '', data: l.data || (l.mes ? `${l.mes}-01` : hojeISO()),
-    conta: l.conta || null, conta_origem: l.conta_origem || null, conta_destino: l.conta_destino || null, destino_caixinha: l.destino_caixinha || null,
+    conta: l.conta || null, conta_origem: l.conta_origem || null, conta_destino: l.conta_destino || null, destino_caixinha: l.destino_caixinha || null, origem_caixinha: l.origem_caixinha || null,
     categoria: l.categoria || null, situacao: l.situacao === 'guardar' && l.tipo === 'receita' ? 'pago' : l.situacao, catManual: true, contaManual: true,
   };
 }

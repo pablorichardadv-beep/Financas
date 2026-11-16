@@ -9,8 +9,13 @@ import contas from './telas/contas.js';
 import honorarios from './telas/honorarios.js';
 import ajustes from './telas/ajustes.js';
 import categorias from './telas/categorias.js';
+import caixinha from './telas/caixinhas.js';
+import emprestimo from './telas/emprestimos.js';
+import * as D from './domain.js';
 
-const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias };
+const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo };
+// telas que pertencem a "Contas" (o botão da barra inferior continua marcado)
+const DENTRO_DE_CONTAS = ['caixinha', 'emprestimo'];
 const raiz = document.getElementById('app');
 
 export const ctx = {
@@ -46,7 +51,7 @@ function renderizar() {
   const tela = ROTAS[rota] || inicio;
   const r = tela(ctx, args);
   const emNovo = rota === 'novo';
-  raiz.innerHTML = emNovo ? r.html : `<main class="tela" id="tela">${r.html}</main>${nav(ROTAS[rota] ? rota : '')}`;
+  raiz.innerHTML = emNovo ? r.html : `<main class="tela" id="tela">${r.html}</main>${nav(DENTRO_DE_CONTAS.includes(rota) ? 'contas' : ROTAS[rota] ? rota : '')}`;
   document.title = 'Controle Financeiro';
   r.montar?.(raiz);
   if (!emNovo) document.getElementById('tela')?.scrollTo(0, 0);
@@ -55,14 +60,18 @@ function renderizar() {
 async function iniciar() {
   try {
     await DB.abrir();
-    const d = await DB.carregarTudo();
+    let d = await DB.carregarTudo();
+    // dados gravados por versões antigas do app são convertidos uma vez para o formato atual
+    const m = D.migrar(d);
+    if (m.mudou) { await DB.substituirTudo(m.d); d = await DB.carregarTudo(); }
     ctx.dados = d;
     navigator.storage?.persist?.();
   } catch (e) {
     raiz.innerHTML = `<main class="tela"><div class="card"><h2>Não foi possível abrir o banco de dados</h2><p class="nota">${String(e)}</p><p class="nota">No iPhone, o modo de navegação privada bloqueia o armazenamento. Abra o app pelo ícone da Tela de Início.</p></div></main>`;
     return;
   }
-  window.addEventListener('hashchange', renderizar);
+  // trocar de tela (ex.: gesto de voltar do iPhone) fecha qualquer janela aberta
+  window.addEventListener('hashchange', () => { document.querySelectorAll('.fundo').forEach((e) => e.remove()); renderizar(); });
   renderizar();
   if ('serviceWorker' in navigator) {
     // Quando uma versão nova do app é instalada, recarrega para usá-la (menos se você estiver preenchendo um lançamento).

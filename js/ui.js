@@ -56,7 +56,7 @@ export function confirmar(titulo, texto, rotuloOk = 'Confirmar', perigo = false)
 
 /**
  * Campo de valor em reais: cada dígito digitado entra como centavo, sempre no fim (como nos apps de banco).
- * `aoMudar(centavos)` é chamado a cada alteração. Devolve { obter() }.
+ * `aoMudar(centavos)` é chamado a cada alteração. Devolve { obter(), definir(centavos) }.
  */
 export function ligarCampoValor(input, inicial, aoMudar) {
   let v = inicial || 0;
@@ -78,5 +78,5 @@ export function ligarCampoValor(input, inicial, aoMudar) {
     mostrar();
   });
   input.addEventListener('focus', () => setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0));
-  return { obter: () => v };
+  return { obter: () => v, definir: (x) => { v = x; mostrar(); } };
 }

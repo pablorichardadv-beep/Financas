@@ -53,7 +53,7 @@ export default function inicio(ctx) {
       <div class="grade">
         <a href="#/contas"><span>Em contas</span><span>${reais(g.contas)}</span></a>
         <a href="#/contas"><span>Caixinhas</span><span>${reais(g.caixinhas)}</span></a>
-        <a href="#/contas"><span>Empréstimo Victor</span><span>${reais(g.emprestimo)}</span></a>
+        <a href="#/contas"><span>Empréstimos</span><span>${reais(g.emprestimo)}</span></a>
         <a href="#/lancamentos"><span>Em aberto</span><span>${reais(g.aberto)}</span></a>
       </div>
     </section>

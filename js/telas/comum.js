@@ -1,15 +1,21 @@
 // Peças compartilhadas entre as telas.
-import { esc } from '../ui.js';
-import { comSinal, dataCurta } from '../format.js';
+import { esc, folha, confirmar } from '../ui.js';
+import { comSinal, dataCurta, dataBR, reais, num } from '../format.js';
+import * as D from '../domain.js';
 
 const mapa = (arr) => new Map(arr.map((x) => [x.id, x]));
-export const nomes = (d) => ({ conta: mapa(d.contas), cat: mapa(d.categorias), cx: mapa(d.caixinhas) });
+export const nomes = (d) => ({ conta: mapa(d.contas), cat: mapa(d.categorias), cx: mapa(d.caixinhas), emp: mapa(d.emprestimos) });
 
-export function destinoTransf(l, n) {
-  if (l.conta_destino) return n.conta.get(l.conta_destino)?.nome || '?';
-  if (l.destino_caixinha) return 'Caixinha ' + (n.cx.get(l.destino_caixinha)?.nome || '');
-  return 'Caixinha/outra conta';
+/** Nome de uma ponta da transferência (conta, caixinha ou empréstimo). lado: 'origem' | 'destino'. */
+export function nomePonta(l, lado, n) {
+  const p = D.ponta(l, lado);
+  if (!p) return lado === 'origem' ? '?' : 'Caixinha/outra conta';
+  if (p.tipo === 'conta') return n.conta.get(p.id)?.nome || '?';
+  if (p.tipo === 'caixinha') return 'Caixinha ' + (n.cx.get(p.id) ? D.rotuloCaixinha(n.cx.get(p.id)) : '');
+  return n.emp.get(p.id)?.nome || 'Empréstimo';
 }
+export const origemTransf = (l, n) => nomePonta(l, 'origem', n);
+export const destinoTransf = (l, n) => nomePonta(l, 'destino', n);
 
 export const tituloItem = (l) => l.descricao || (l.tipo === 'transferencia' ? 'Transferência entre contas' : 'Sem descrição');
 
@@ -26,7 +32,7 @@ function tagDe(l) {
 export function linhaItem(l, n, { comData = false } = {}) {
   const partes = [];
   if (comData && l.data) partes.push(dataCurta(l.data));
-  if (l.tipo === 'transferencia') partes.push(`${n.conta.get(l.conta_origem)?.nome || '?'} → ${destinoTransf(l, n)}`);
+  if (l.tipo === 'transferencia') partes.push(`${origemTransf(l, n)} → ${destinoTransf(l, n)}`);
   else {
     const cat = l.categoria && n.cat.get(l.categoria)?.nome;
     if (cat) partes.push(cat);
@@ -36,4 +42,28 @@ export function linhaItem(l, n, { comData = false } = {}) {
   return `<button class="item" data-id="${esc(l.id)}">
     <span class="t"><b>${esc(tituloItem(l))}</b><small>${esc(partes.join(' · '))}${tag}</small></span>
     <span class="v ${cor}">${comSinal(l.valor, l.tipo)}</span></button>`;
+}
+
+/** Rótulo e sinal de um movimento de caixinha ou de empréstimo (para os históricos). */
+export const ROTULO_MOV = {
+  saldo_inicial: 'Saldo inicial', aporte: 'Aporte', resgate: 'Resgate', rendimento: 'Rendimento',
+  principal: 'Empréstimo', pagamento: 'Pagamento',
+};
+
+/** Folha com os detalhes de um movimento e a opção de excluir (leva junto o lançamento ligado, se houver). */
+export function abrirMovimento(ctx, tabela, m, rotulo, { fluxo = m.valor } = {}) {
+  const d = ctx.dados;
+  const f = folha(`
+    <div><h2>${esc(rotulo)}</h2><p class="rot"><b>${fluxo < 0 ? '− ' : '+ '}R$ ${num(m.valor)}</b> · ${esc(dataBR(m.data))}</p></div>
+    ${m.descricao ? `<div class="card" style="gap:0;padding:6px 16px"><div class="item"><span class="rot">Descrição</span><b style="font-size:14.5px">${esc(m.descricao)}</b></div></div>` : ''}
+    ${m.lancamento_id ? '<p class="nota">Este movimento também está nos seus lançamentos (saiu ou entrou em uma conta). Ao excluir, o lançamento é excluído junto e o saldo da conta volta ao que era.</p>' : ''}
+    <button class="btn perigo" data-excluir>Excluir</button>
+    <button class="btn sec" data-fechar>Fechar</button>`);
+  f.el.querySelector('[data-fechar]').onclick = f.fechar;
+  f.el.querySelector('[data-excluir]').onclick = async () => {
+    f.fechar();
+    if (!(await confirmar('Excluir este movimento?', m.lancamento_id ? 'O lançamento ligado a ele também será excluído.' : 'Não dá para desfazer.', 'Excluir', true))) return;
+    await ctx.gravar(D.opsExcluirMovimento(d, tabela, m));
+    ctx.aviso('Movimento excluído');
+  };
 }
