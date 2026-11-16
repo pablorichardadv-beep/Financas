@@ -10,6 +10,7 @@ import honorarios from './telas/honorarios.js';
 import ajustes from './telas/ajustes.js';
 import projecao from './telas/projecao.js';
 import semcategoria from './telas/semcategoria.js';
+import assistente from './telas/assistente.js';
 import categorias from './telas/categorias.js';
 import caixinha from './telas/caixinhas.js';
 import emprestimo from './telas/emprestimos.js';
@@ -18,9 +19,10 @@ import cartao from './telas/cartoes.js';
 import * as D from './domain.js';
 import { hojeISO } from './format.js';
 
-const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo, honorario, cartao, projecao, semcategoria };
+const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo, honorario, cartao, projecao, semcategoria, assistente };
 // telas que pertencem a "Contas" (o botão da barra inferior continua marcado)
 const DENTRO_DE_MES = ['projecao'];
+const DENTRO_DE_INICIO = ['assistente', 'semcategoria'];
 const DENTRO_DE_CONTAS = ['caixinha', 'emprestimo', 'honorarios', 'honorario', 'cartao'];
 const raiz = document.getElementById('app');
 
@@ -59,7 +61,7 @@ function renderizar() {
   const tela = ROTAS[rota] || inicio;
   const r = tela(ctx, args);
   const emNovo = rota === 'novo';
-  raiz.innerHTML = emNovo ? r.html : `<main class="tela" id="tela">${r.html}</main>${nav(DENTRO_DE_CONTAS.includes(rota) ? 'contas' : DENTRO_DE_MES.includes(rota) ? 'mes' : ROTAS[rota] ? rota : '')}`;
+  raiz.innerHTML = emNovo ? r.html : `<main class="tela" id="tela">${r.html}</main>${nav(DENTRO_DE_CONTAS.includes(rota) ? 'contas' : DENTRO_DE_MES.includes(rota) ? 'mes' : DENTRO_DE_INICIO.includes(rota) ? '' : ROTAS[rota] ? rota : '')}`;
   document.title = 'Controle Financeiro';
   r.montar?.(raiz);
   if (!emNovo) document.getElementById('tela')?.scrollTo(0, 0);

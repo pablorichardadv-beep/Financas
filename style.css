@@ -258,3 +258,15 @@ a.card { color: inherit; display: flex; flex-direction: column; gap: 6px; }
   input, select { color-scheme: dark; }
 }
 .pend, .pend span { color: var(--ink); }
+
+/* ---------- v15: assistente ---------- */
+.fala { width: 100%; border: 1px solid var(--line2); border-radius: 14px; padding: 12px 14px; font-size: 16px; font-family: inherit; background: var(--card); color: var(--ink); resize: none; outline: none; }
+.fala:focus { border-color: var(--navy-t); }
+.ass-res { gap: 10px; }
+.ass-res .destaque { display: flex; flex-direction: column; gap: 2px; }
+.ass-res .btn.sec { margin-top: -2px; }
+.ass-atalho { flex-direction: row !important; align-items: center; gap: 12px !important; padding: 12px 16px; }
+.ass-atalho .t { display: flex; flex-direction: column; gap: 2px; flex: 1; } .ass-atalho .t b { font-size: 14.5px; } .ass-atalho .t small { font-size: 12px; color: var(--muted); }
+.ass-ic { width: 38px; height: 38px; border-radius: 12px; background: var(--tag-azul); display: inline-flex; align-items: center; justify-content: center; font-size: 19px; flex: none; }
+.ass-atalho .seta { color: var(--muted); font-size: 18px; }
+.chips .chip { height: auto; min-height: 34px; padding: 7px 12px; text-align: left; line-height: 1.25; }

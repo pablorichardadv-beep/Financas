@@ -54,6 +54,7 @@ export default function inicio(ctx) {
       <a class="btn-ic" href="#/ajustes" aria-label="Ajustes">${icone.ajustes()}</a>
     </header>
     ${faixa}
+    <a class="card ass-atalho" href="#/assistente"><span class="ass-ic" aria-hidden="true">🎙️</span><span class="t"><b>Assistente</b><small>Escreva ou dite um lançamento ou uma pergunta</small></span><b class="seta">›</b></a>
     <section class="saldo" aria-label="Saldo geral">
       <div><div class="eyebrow">SALDO GERAL ${ajuda('saldoGeral')}</div><div class="valor">${reais(g.total)}</div></div>
       <div class="grade">
