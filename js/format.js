@@ -10,7 +10,7 @@ export const reais = (centavos) => (centavos < 0 ? '−' : '') + 'R$ ' + num(cen
 
 /** Com sinal explícito para listas: "+ R$ 10,00" / "− R$ 10,00" */
 export const comSinal = (centavos, tipo) =>
-  (tipo === 'receita' ? '+ ' : tipo === 'despesa' || tipo === 'cartao' ? '− ' : '') + 'R$ ' + num(centavos);
+  (tipo === 'receita' ? '+ ' : tipo === 'despesa' || tipo === 'cartao' || tipo === 'fatura' ? '− ' : '') + 'R$ ' + num(centavos);
 
 const pad = (n) => String(n).padStart(2, '0');
 

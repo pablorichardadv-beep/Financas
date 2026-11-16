@@ -31,6 +31,8 @@ export const ctx = {
   },
   async recarregar() {
     ctx.dados = await DB.carregarTudo();
+    // um recarregamento que termina com você já preenchendo um lançamento não pode apagar o formulário
+    if (location.hash.startsWith('#/novo') && raiz.querySelector('.fixo-form')) return;
     renderizar();
   },
   DB,

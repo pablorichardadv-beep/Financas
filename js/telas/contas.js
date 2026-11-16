@@ -1,5 +1,5 @@
 import { esc, icone } from '../ui.js';
-import { reais, dataBR, hojeISO } from '../format.js';
+import { reais, dataBR, hojeISO, mesNome } from '../format.js';
 import * as D from '../domain.js';
 import { abrirEditorConta, nomeTipoConta } from './cadastros.js';
 import { abrirEditorCaixinha } from './caixinhas.js';
@@ -37,10 +37,9 @@ export default function contas(ctx) {
   const hoje = hojeISO();
   const ordemCartao = (a, b) => a.banco.localeCompare(b.banco, 'pt-BR') || a.final.localeCompare(b.final);
   const linhaCartao = (c) => {
-    const mes = D.faturaAtualDoCartao(d, c, hoje);
-    const total = d.compras_cartao.filter((k) => k.cartao === c.id && k.fatura === mes).reduce((s, k) => s + k.valor, 0);
-    return `<a class="item" href="#/cartao/${esc(c.id)}"><span class="t"><b>${esc(c.banco)} · ${esc(c.bandeira)}</b><small>final ${esc(c.final)} · vence dia ${c.vencimento}${c.arquivado ? ' · arquivado' : ''}</small></span>
-      <span class="v">${reais(total)} <span class="rot">›</span></span></a>`;
+    const f = D.faturaDaVezDoCartao(d, c, hoje);
+    return `<a class="item" href="#/cartao/${esc(c.id)}"><span class="t"><b>${esc(c.banco)} · ${esc(c.bandeira)}</b><small>final ${esc(c.final)} · fatura ${esc(mesNome(f.mes))} vence ${dataBR(f.vencimento)}${c.arquivado ? ' · arquivado' : ''}</small></span>
+      <span class="v ${f.pendente ? 'verm' : ''}">${reais(f.pendente)} <span class="rot">›</span></span></a>`;
   };
   const cartoesAtivos = d.cartoes.filter((c) => !c.arquivado).sort(ordemCartao);
   const cartoesArq = d.cartoes.filter((c) => c.arquivado).sort(ordemCartao);
@@ -51,7 +50,7 @@ export default function contas(ctx) {
   // resumo: cada grupo mostra o total e, ao tocar, o saldo de cada conta dentro dele
   const somaPf = pf.reduce((s, c) => s + (sc[c.id] || 0), 0);
   const somaPj = pj.reduce((s, c) => s + (sc[c.id] || 0), 0);
-  const faturasAbertas = cartoesAtivos.reduce((s, c) => { const mes = D.faturaAtualDoCartao(d, c, hoje); return s + d.compras_cartao.filter((k) => k.cartao === c.id && k.fatura === mes).reduce((x, k) => x + k.valor, 0); }, 0);
+  const faturasAbertas = cartoesAtivos.reduce((s, c) => s + D.faturaDaVezDoCartao(d, c, hoje).pendente, 0);
   const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
   const grupos = [
     { id: 'pf', titulo: 'Contas PF', sub: plural(pf.length, 'conta', 'contas'), total: somaPf, corpo: pf.length ? pf.map(linhaConta).join('') : '<p class="vazio">Nenhuma conta. Toque em “+ Nova conta”.</p>', acao: '<button class="link" data-nova-conta>+ Nova conta</button>' },
@@ -74,7 +73,7 @@ export default function contas(ctx) {
     <section class="saldo"><div><div class="eyebrow">RESUMO · SALDO GERAL</div><div class="valor">${reais(g.total)}</div></div>
       <button class="claro" data-expandir>${todosAbertos ? 'Recolher tudo' : 'Ver o saldo de todas as contas'}</button></section>
     <section class="card res-contas" style="gap:0">${grupos.map(grupoHtml).join('')}
-      <p class="nota">Cartões mostram a fatura em aberto e não entram no saldo geral. Toque em um grupo para ver o saldo de cada conta.</p></section>
+      <p class="nota">Cartões mostram o que falta pagar da fatura em aberto; a que vence até o fim do mês já está descontada em “Em aberto” no saldo geral. Toque em um grupo para ver o saldo de cada conta.</p></section>
     ${cartoesArq.length ? `<section class="card" style="gap:2px"><h2>Cartões arquivados</h2><div class="lista">${cartoesArq.map(linhaCartao).join('')}</div></section>` : ''}
     ${arquivadas.length ? `<section class="card" style="gap:2px"><h2>Contas arquivadas</h2><div class="lista">${arquivadas.map(linhaConta).join('')}</div></section>` : ''}
     ${arqOutros.length ? `<section class="card" style="gap:2px"><h2>Caixinhas e empréstimos arquivados</h2><div class="lista">${arqOutros.join('')}</div></section>` : ''}

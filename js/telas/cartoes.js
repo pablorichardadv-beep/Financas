@@ -1,6 +1,6 @@
 // Cartões de crédito: tela do cartão (faturas e compras) e cadastro. Rota: #/cartao/<id>
 import { esc, folha, confirmar, ligarCampoValor } from '../ui.js';
-import { reais, hojeISO, dataBR, mesNome } from '../format.js';
+import { reais, hojeISO, dataBR, mesNome, norm, novoId } from '../format.js';
 import * as D from '../domain.js';
 import { nomes, linhaItem } from './comum.js';
 import { abrirDetalhe } from './detalhe.js';
@@ -9,6 +9,9 @@ import { prepararNovo } from './novo.js';
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 let mesEscolhido = null;   // mês da fatura aberta na tela (vale enquanto o app estiver aberto)
 let cartaoDoMes = null;
+
+/** Abre a tela do cartão já na fatura indicada (usado pela linha da fatura em Lançamentos). */
+export const mostrarFatura = (cartaoId, mes) => { mesEscolhido = mes; cartaoDoMes = cartaoId; };
 
 export default function cartao(ctx, args) {
   const d = ctx.dados;
@@ -19,12 +22,15 @@ export default function cartao(ctx, args) {
   const hoje = hojeISO();
   const faturas = D.faturasDoCartao(d, c);
   const atual = D.faturaAtualDoCartao(d, c, hoje);
+  const daVez = D.faturaDaVezDoCartao(d, c, hoje).mes;     // a mais antiga ainda em aberto (ou a atual)
   if (cartaoDoMes !== c.id) { mesEscolhido = null; cartaoDoMes = c.id; }
-  const meses = [...new Set([atual, ...faturas.map((f) => f.mes)])].sort().reverse();
-  if (!mesEscolhido || !meses.includes(mesEscolhido)) mesEscolhido = atual;
+  const meses = [...new Set([atual, daVez, ...faturas.map((f) => f.mes)])].sort().reverse();
+  if (!mesEscolhido || !meses.includes(mesEscolhido)) mesEscolhido = daVez;
   const f = faturas.find((x) => x.mes === mesEscolhido) || { mes: mesEscolhido, compras: [], total: 0, ...D.datasDaFatura(c, mesEscolhido) };
   const n = nomes(d);
   const emAberto = f.fechamento >= hoje;
+  const sit = D.situacaoFatura(d, c, mesEscolhido);
+  const SITUACAO_TXT = { aberta: 'Em aberto', parcial: 'Paga em parte', paga: 'Paga', antiga: 'Anterior ao controle', vazia: 'Sem compras' };
   const recs = d.recorrencias.filter((r) => r.cartao === c.id && r.ativa);
 
   const html = `
@@ -36,21 +42,28 @@ export default function cartao(ctx, args) {
       <div class="grade">
         <div><span>Vencimento</span><span>${dataBR(f.vencimento)}</span></div>
         <div><span>${emAberto ? 'Fecha em' : 'Fechou em'}</span><span>${dataBR(f.fechamento)}</span></div>
+        <div><span>Situação</span><span data-situacao>${SITUACAO_TXT[sit.status]}</span></div>
+        <div><span>${sit.pago ? 'Falta pagar' : 'A pagar'}</span><span>${reais(sit.pendente)}</span></div>
       </div>
     </section>
-    <button class="btn" data-compra>+ Compra neste cartão</button>
+    ${sit.pendente > 0 ? `<button class="btn" data-pagar>Pagar fatura · ${reais(sit.pendente)}</button>` : ''}
+    <button class="btn ${sit.pendente > 0 ? 'sec' : ''}" data-compra>+ Compra neste cartão</button>
+    ${sit.pagamentos.length ? `<section class="card" style="gap:2px"><h2>Pagamentos desta fatura</h2><div class="lista">${sit.pagamentos.map((l) => linhaItem(l, n, { comData: true })).join('')}</div>
+      <p class="nota">Toque em um pagamento para excluir. A fatura volta a ficar em aberto.</p></section>` : ''}
+    ${sit.status === 'antiga' ? '<p class="nota">Esta fatura é anterior ao controle de pagamento do app: ela não entra em “a pagar” nem nos lançamentos em aberto.</p>' : ''}
     <section class="card" style="gap:2px"><h2>Compras da fatura</h2>
       <div class="lista">${f.compras.length ? f.compras.map((k) => linhaItem({ id: k.id, tipo: 'cartao', data: null, data_compra: k.data, mes: k.fatura, descricao: k.descricao, valor: k.valor, categoria: k.categoria, situacao: 'cartao', cartao_id: null }, n, { comData: true })).join('') : '<p class="vazio">Nenhuma compra nesta fatura.</p>'}</div></section>
     ${recs.length ? `<section class="card" style="gap:2px"><h2>Compras recorrentes</h2>
       <div class="lista">${recs.map((r) => `<button class="item" data-rec="${esc(r.id)}"><span class="t"><b>${esc(r.descricao)}</b><small>todo dia ${r.dia}${n.cat.get(r.categoria) ? ' · ' + esc(n.cat.get(r.categoria).nome) : ''}</small></span><span class="v verm">${reais(r.valor)} <span class="rot">›</span></span></button>`).join('')}</div>
       <p class="nota">Cai todo mês na fatura até você cancelar. Toque para mudar o valor ou cancelar.</p></section>` : ''}
-    <p class="nota" style="text-align:center">Compras feitas até o dia ${c.fechamento} entram na fatura que vence no mesmo mês ou no seguinte, conforme o seu vencimento. Elas saem da conta quando você lança o pagamento da fatura (ex.: “Cartão ${esc(c.banco)}”).</p>`;
+    <p class="nota" style="text-align:center">Compras feitas até o dia ${c.fechamento} entram na fatura que vence no mesmo mês ou no seguinte, conforme o seu vencimento. Elas saem da conta quando você toca em “Pagar fatura”.</p>`;
 
   return {
     html,
     montar(raiz) {
       raiz.querySelector('[data-editar]').onclick = () => abrirEditorCartao(ctx, c.id);
       raiz.querySelector('[data-mes]').addEventListener('change', (e) => { mesEscolhido = e.target.value; ctx.recarregar(); });
+      raiz.querySelector('[data-pagar]')?.addEventListener('click', () => abrirPagarFatura(ctx, c, sit));
       raiz.querySelector('[data-compra]').onclick = () => { prepararNovo({ cartao: true, cartao_id: c.id, voltar: { rota: 'cartao/' + c.id, aoSalvar: (mes) => { mesEscolhido = mes; cartaoDoMes = c.id; } } }); ctx.ir('novo'); };
       raiz.querySelectorAll('[data-rec]').forEach((b) => (b.onclick = () => abrirRecorrencia(ctx, b.dataset.rec)));
       raiz.querySelectorAll('.item[data-id]').forEach((b) => (b.onclick = () => abrirDetalhe(ctx, b.dataset.id)));
@@ -113,7 +126,7 @@ export function abrirEditorCartao(ctx, id = null, { aoSalvar, semRender = false 
       aoSalvar?.(c.id);
       return;
     }
-    const novo = { id: D.idUnicoCartao(d, v.ok.banco, v.ok.final), ...v.ok };
+    const novo = { id: D.idUnicoCartao(d, v.ok.banco, v.ok.final), ...v.ok, controle_desde: D.faturaDaCompra(v.ok, hojeISO()).fatura };
     if (semRender) { await ctx.DB.lote([['put', 'cartoes', novo]]); ctx.dados.cartoes.push(novo); } else await ctx.gravar([['put', 'cartoes', novo]]);
     ctx.aviso('Cartão cadastrado');
     aoSalvar?.(novo.id);
@@ -170,5 +183,46 @@ export function abrirRecorrencia(ctx, id) {
     if (!(await confirmar(`Cancelar “${r.descricao}”?`, `Para de cair todo mês. ${plural(futuras.length, 'cobrança futura sai', 'cobranças futuras saem')} das faturas; o que já foi lançado até hoje continua.`, 'Cancelar recorrência', true))) return;
     await ctx.gravar(D.opsCancelarRecorrencia(d, r, hoje));
     ctx.aviso('Recorrência cancelada');
+  };
+}
+
+// ---------------------------------------------------------------- pagar a fatura
+/** Baixa a fatura: lança a despesa na conta escolhida, ligada ao cartão e ao mês. Aceita pagamento parcial. */
+export function abrirPagarFatura(ctx, c, sit) {
+  const d = ctx.dados;
+  const ativas = D.contasAtivas(d);
+  const sug = D.ultimaContaUsada(d, 'despesa') || ativas[0]?.id || '';
+  const anterior = d.lancamentos.filter((l) => l.fatura_cartao === c.id && l.categoria).pop();
+  const fixas = d.categorias.find((x) => x.tipo === 'despesa' && !x.arquivada && /^fixas?$/.test(norm(x.nome)));
+  const cat = anterior?.categoria || fixas?.id || '';
+  const cats = d.categorias.filter((x) => x.tipo === 'despesa' && (!x.arquivada || x.id === cat));
+  const f = folha(`
+    <h2>Pagar fatura de ${esc(mesNome(sit.mes))}</h2>
+    <p class="rot">${esc(D.rotuloCartao(c))} · vence em ${dataBR(sit.vencimento)}</p>
+    <div class="card" style="gap:0;padding:6px 16px">
+      <div class="item"><span class="rot">Total da fatura</span><b style="font-size:14.5px">${reais(sit.total)}</b></div>
+      ${sit.pago ? `<div class="item"><span class="rot">Já pago</span><b style="font-size:14.5px">${reais(sit.pago)}</b></div>` : ''}
+      <div class="item"><span class="rot">Falta pagar</span><b style="font-size:14.5px">${reais(sit.pendente)}</b></div></div>
+    <div class="campo"><label for="fv">Valor que está pagando</label><input id="fv" inputmode="numeric" autocomplete="off" aria-label="Valor pago da fatura em reais"></div>
+    <div class="campo sel"><label for="fc">Sai de qual conta</label><select id="fc">${ativas.map((a) => `<option value="${esc(a.id)}" ${a.id === sug ? 'selected' : ''}>${esc(a.nome)}</option>`).join('')}</select></div>
+    <div class="campo"><label for="fd">Data do pagamento</label><input id="fd" type="date" value="${hojeISO()}"></div>
+    <div class="campo sel"><label for="fk">Categoria do pagamento</label><select id="fk"><option value="">Sem categoria</option>${cats.map((x) => `<option value="${esc(x.id)}" ${x.id === cat ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div>
+    <p class="nota">O valor sai da conta e a fatura é baixada. Se pagar menos que o total, o resto continua em aberto. As compras seguem aparecendo nas categorias do mês, então esse pagamento não duplica nada.</p>
+    <div class="erro" id="fe" role="alert"></div>
+    <button class="btn" data-ok>Confirmar pagamento</button>`);
+  const q = (s) => f.el.querySelector(s);
+  const valor = ligarCampoValor(q('#fv'), sit.pendente, undefined, { substituir: true });
+  q('[data-ok]').onclick = async () => {
+    const v = valor.obter();
+    if (!(v > 0)) { q('#fe').textContent = 'Informe o valor do pagamento.'; return; }
+    if (v > sit.pendente) { q('#fe').textContent = `O valor é maior que o que falta pagar (${reais(sit.pendente)}).`; return; }
+    if (!q('#fd').value) { q('#fe').textContent = 'Informe a data.'; return; }
+    if (!q('#fc').value) { q('#fe').textContent = 'Escolha a conta.'; return; }
+    f.fechar();
+    await ctx.gravar([['put', 'lancamentos', {
+      id: novoId('l'), tipo: 'despesa', data: q('#fd').value, descricao: `Fatura ${c.banco} ${c.bandeira} ••${c.final} (${mesNome(sit.mes)})`, valor: v,
+      conta: q('#fc').value, categoria: q('#fk').value || null, situacao: 'pago', fatura_cartao: c.id, fatura_mes: sit.mes,
+    }]]);
+    ctx.aviso(v === sit.pendente ? 'Fatura paga' : 'Pagamento lançado');
   };
 }

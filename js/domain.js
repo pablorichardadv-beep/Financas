@@ -2,7 +2,7 @@
 // d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios (parcelas), contratos, cartoes, recorrencias }
 // Todos os valores em CENTAVOS.
 
-import { norm, novoId } from './format.js';
+import { norm, novoId, hojeISO } from './format.js';
 
 const soma = (xs) => xs.reduce((a, b) => a + b, 0);
 
@@ -10,11 +10,11 @@ export const mesDoLanc = (l) => l.mes || (l.data ? l.data.slice(0, 7) : null);
 export const estaPago = (l) => l.situacao === 'pago';
 /** Em aberto = ainda não saiu/entrou em nenhuma conta ("a pagar", "atrasada", "a receber"). "Guardar" fica de fora. */
 export const estaAberto = (l) => l.situacao === 'aberto' || l.situacao === 'atrasado';
-/** Filtro de situação da lista: '' (todos), 'receber' / 'pagar' (ainda em aberto) ou 'recebidas' / 'pagas' (já liquidadas). */
+/** Filtro de situação da lista: '' (todos), 'receber' / 'pagar' (ainda em aberto; faturas de cartão em aberto contam como "a pagar") ou 'recebidas' / 'pagas' (já liquidadas). */
 export const passaSituacao = (l, sit) => {
   if (!sit) return true;
   if (sit === 'receber') return l.tipo === 'receita' && estaAberto(l);
-  if (sit === 'pagar') return l.tipo === 'despesa' && estaAberto(l);
+  if (sit === 'pagar') return l.tipo === 'fatura' || (l.tipo === 'despesa' && estaAberto(l));
   if (sit === 'recebidas') return l.tipo === 'receita' && estaPago(l);
   if (sit === 'pagas') return l.tipo === 'despesa' && estaPago(l);
   return true;
@@ -143,7 +143,7 @@ export function movimentoEmprestimo(e, direcao, valor) {
   return { valor: direcao === 'para' ? valor : -valor, tipo: principal ? 'principal' : 'pagamento' };
 }
 
-export function emAberto(d) {
+export function emAberto(d, hoje = hojeISO()) {
   let aReceber = 0;
   let aPagar = 0;
   for (const l of d.lancamentos) {
@@ -151,14 +151,16 @@ export function emAberto(d) {
     if (l.tipo === 'receita') aReceber += l.valor;
     else if (l.tipo === 'despesa') aPagar += l.valor;
   }
+  // faturas de cartão que vencem até o fim deste mês e ainda não foram pagas
+  for (const f of faturasEmAberto(d)) if (f.mes <= hoje.slice(0, 7)) aPagar += f.pendente;
   return { aReceber, aPagar, liquido: aReceber - aPagar };
 }
 
-export function saldoGeral(d) {
+export function saldoGeral(d, hoje = hojeISO()) {
   const contas = totalContas(d);
   const caixinhas = totalCaixinhas(d);
   const emprestimo = totalEmprestimos(d);
-  const aberto = emAberto(d).liquido;
+  const aberto = emAberto(d, hoje).liquido;
   return { contas, caixinhas, emprestimo, aberto, total: contas + caixinhas + emprestimo + aberto };
 }
 
@@ -170,6 +172,7 @@ export function resumoMes(d, mes) {
     if (l.tipo === 'receita') { rec += l.valor; if (estaPago(l)) recPago += l.valor; }
     else { desp += l.valor; if (estaPago(l)) despPago += l.valor; }
   }
+  for (const f of faturasEmAberto(d)) if (f.mes === mes) desp += f.pendente;   // fatura do cartão ainda não paga = despesa prevista
   return {
     receitas: rec, recebido: recPago, aReceber: rec - recPago,
     despesas: desp, pagas: despPago, aPagar: desp - despPago,
@@ -187,14 +190,24 @@ export function aPagarMes(d, mes, hoje) {
     total += l.valor;
     if (l.situacao === 'atrasado' || (l.data && l.data < hoje)) atrasado += l.valor;
   }
+  for (const f of faturasEmAberto(d)) {
+    if (f.mes !== mes) continue;
+    total += f.pendente;
+    if (f.vencimento < hoje) atrasado += f.pendente;
+  }
   return { total, atrasado };
 }
 
 export function despesasPorCategoria(d, mes) {
   const porCat = new Map();
   for (const l of d.lancamentos) {
-    if (l.tipo !== 'despesa' || mesDoLanc(l) !== mes) continue;
+    if (l.tipo !== 'despesa' || mesDoLanc(l) !== mes || l.fatura_cartao) continue;   // pagamento de fatura: conta pelas compras abaixo
     porCat.set(l.categoria || '', (porCat.get(l.categoria || '') || 0) + l.valor);
+  }
+  // compras da fatura que vence no mês entram por categoria (a fatura paga ou em aberto)
+  for (const c of d.cartoes || []) {
+    if (mes < controleDesde(c)) continue;
+    for (const k of d.compras_cartao || []) if (k.cartao === c.id && k.fatura === mes) porCat.set(k.categoria || '', (porCat.get(k.categoria || '') || 0) + k.valor);
   }
   const nome = new Map(d.categorias.map((c) => [c.id, c.nome]));
   const total = soma([...porCat.values()]);
@@ -202,6 +215,35 @@ export function despesasPorCategoria(d, mes) {
     .map(([id, valor]) => ({ id, nome: nome.get(id) || 'Sem categoria', valor, pct: total ? valor / total : 0 }))
     .sort((a, b) => b.valor - a.valor);
 }
+
+// ---------- faturas do cartão: em aberto ou paga ----------
+// Pagar a fatura = lançar uma despesa na conta com { fatura_cartao: id do cartão, fatura_mes: 'AAAA-MM' }.
+// Faturas de meses anteriores a `controle_desde` (do cartão) são histórico: não entram em "a pagar".
+export const controleDesde = (c) => c.controle_desde || '0000-00';
+export const ehPagamentoFatura = (l) => Boolean(l.fatura_cartao);
+
+export function situacaoFatura(d, c, mes) {
+  const total = soma((d.compras_cartao || []).filter((k) => k.cartao === c.id && k.fatura === mes).map((k) => k.valor));
+  const pagamentos = (d.lancamentos || []).filter((l) => l.fatura_cartao === c.id && l.fatura_mes === mes).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  const pago = soma(pagamentos.filter(estaPago).map((l) => l.valor));
+  const controlada = mes >= controleDesde(c);
+  const pendente = controlada ? Math.max(0, total - pago) : 0;
+  const status = !total ? 'vazia' : !controlada ? 'antiga' : pendente === 0 ? 'paga' : pago > 0 ? 'parcial' : 'aberta';
+  return { cartao: c, mes, total, pago, pendente, controlada, status, pagamentos, ...datasDaFatura(c, mes) };
+}
+
+/** Todas as faturas com algo a pagar (todos os cartões, do mais antigo para o mais novo). */
+export function faturasEmAberto(d) {
+  const out = [];
+  for (const c of d.cartoes || []) {
+    const meses = [...new Set((d.compras_cartao || []).filter((k) => k.cartao === c.id).map((k) => k.fatura))].sort();
+    for (const mes of meses) { const f = situacaoFatura(d, c, mes); if (f.pendente > 0) out.push(f); }
+  }
+  return out;
+}
+
+/** A fatura "da vez" do cartão: a mais antiga ainda em aberto; se não houver, a fatura atual (com valor zero a pagar). */
+export const faturaDaVezDoCartao = (d, c, hoje) => faturasEmAberto(d).find((f) => f.cartao.id === c.id) || situacaoFatura(d, c, faturaAtualDoCartao(d, c, hoje));
 
 export const faturaCartao = (d, mes) => soma(d.compras_cartao.filter((k) => k.fatura === mes).map((k) => k.valor));
 
@@ -325,23 +367,51 @@ export const categoriaHonorarios = (d) =>
 
 export const rotuloParcela = (p, c) => `${p.numero}/${Math.max(c.qtd || 0, p.numero)}`;
 
-/** Recebimento de uma parcela: marca como paga e lança a receita na conta escolhida. */
+/** Lançamento "a receber" que já existe para esta parcela (ligado por `lanc_previsto`), se ainda estiver em aberto. */
+export const lancamentoPrevisto = (d, p) => (p.lanc_previsto ? d.lancamentos.find((l) => l.id === p.lanc_previsto && l.tipo === 'receita' && !estaPago(l)) || null : null);
+/** Parcela em aberto que está ligada a este lançamento "a receber". */
+export const parcelaDoLancamento = (d, l) => d.honorarios.find((p) => p.lanc_previsto === l.id && p.status !== 'pago') || null;
+
+/**
+ * Recebimento de uma parcela: marca como paga e baixa a receita na conta escolhida.
+ * Se a parcela já tem um lançamento "a receber", é ele que vira "recebido" (nada é lançado em dobro).
+ */
 export function opsReceberParcela(d, p, c, { conta, data, categoria = null }) {
-  const idL = novoId('l');
+  const prev = lancamentoPrevisto(d, p);
+  const idL = prev ? prev.id : novoId('l');
+  const { mes, ...base } = prev || {};
+  const lanc = {
+    ...base, id: idL, tipo: 'receita', data, descricao: prev ? prev.descricao : `Honorários – ${c.cliente} (${rotuloParcela(p, c)})`, valor: p.valor,
+    conta, categoria: categoria || prev?.categoria || null, situacao: 'pago', honorario_id: p.id,
+  };
   return [
-    ['put', 'lancamentos', {
-      id: idL, tipo: 'receita', data, descricao: `Honorários – ${c.cliente} (${rotuloParcela(p, c)})`, valor: p.valor,
-      conta, categoria, situacao: 'pago', honorario_id: p.id,
-    }],
-    ['put', 'honorarios', { ...p, status: 'pago', pago_em: data, conta, lancamento_id: idL }],
+    ['put', 'lancamentos', lanc],
+    ['put', 'honorarios', { ...p, status: 'pago', pago_em: data, conta, lancamento_id: idL, ...(prev ? { lanc_previsto: idL } : {}) }],
   ];
 }
 
-/** Volta a parcela para "em aberto" e apaga o lançamento do recebimento. */
-export function opsDesfazerRecebimento(p) {
+/** Volta a parcela para "em aberto": o lançamento reaproveitado volta a "a receber"; o criado só para o recebimento é apagado. */
+export function opsDesfazerRecebimento(p, d = null) {
   const { pago_em, conta, lancamento_id, ...resto } = p;
   const ops = [['put', 'honorarios', { ...resto, status: 'aberto' }]];
-  if (lancamento_id) ops.push(['del', 'lancamentos', lancamento_id]);
+  if (!lancamento_id) return ops;
+  const l = d && p.lanc_previsto === lancamento_id ? d.lancamentos.find((x) => x.id === lancamento_id) : null;
+  if (l) {
+    const { honorario_id, ...r } = l;
+    const venc = p.vencimento || l.data;
+    ops.push(['put', 'lancamentos', { ...r, situacao: 'aberto', data: venc, mes: venc.slice(0, 7) }]);
+  } else ops.push(['del', 'lancamentos', lancamento_id]);
+  return ops;
+}
+
+/** Muda valor e vencimento de uma parcela em aberto e acompanha o lançamento "a receber" ligado a ela. */
+export function opsEditarParcela(d, p, { valor, vencimento }) {
+  const ops = [['put', 'honorarios', { ...p, valor, vencimento: vencimento || null }]];
+  const prev = lancamentoPrevisto(d, p);
+  if (prev) {
+    const data = vencimento || prev.data;
+    ops.push(['put', 'lancamentos', { ...prev, valor, data, mes: data.slice(0, 7) }]);
+  }
   return ops;
 }
 
@@ -350,12 +420,14 @@ export const opsExcluirContrato = (d, id) => [...d.honorarios.filter((p) => p.co
 /** O lançamento é o recebimento de uma parcela de honorário? (então só se altera pela tela do honorário) */
 export const ligadaAHonorario = (l) => Boolean(l.honorario_id);
 
-/** Ao excluir um lançamento de recebimento, a parcela volta a ficar em aberto. */
+/** Ao excluir o lançamento de uma parcela: se era o recebimento, a parcela volta a ficar "a receber"; se era o "a receber", a parcela perde a ligação. */
 export function opsAoExcluirLancamento(d, l) {
-  const p = l.honorario_id && d.honorarios.find((x) => x.id === l.honorario_id);
+  const p = (l.honorario_id && d.honorarios.find((x) => x.id === l.honorario_id)) || d.honorarios.find((x) => x.lanc_previsto === l.id);
   if (!p) return [];
-  const { pago_em, conta, lancamento_id, ...resto } = p;
-  return [['put', 'honorarios', { ...resto, status: 'aberto' }]];
+  let q = { ...p };
+  if (q.lanc_previsto === l.id) delete q.lanc_previsto;   // o lançamento deixou de existir
+  if (l.honorario_id === p.id) { delete q.pago_em; delete q.conta; delete q.lancamento_id; q.status = 'aberto'; }
+  return [['put', 'honorarios', q]];
 }
 
 // ---------- cartões de crédito ----------
@@ -493,8 +565,8 @@ export function faturaAtualDoCartao(d, c, hoje) {
 export function faturasDoMes(d, mes) {
   const linhas = [];
   for (const c of d.cartoes) {
-    const compras = d.compras_cartao.filter((k) => k.cartao === c.id && k.fatura === mes);
-    if (compras.length) linhas.push({ cartao: c, total: soma(compras.map((k) => k.valor)), vencimento: datasDaFatura(c, mes).vencimento });
+    const f = situacaoFatura(d, c, mes);
+    if (f.total) linhas.push({ cartao: c, total: f.total, vencimento: f.vencimento, pago: f.pago, pendente: f.pendente, status: f.status });
   }
   const sem = d.compras_cartao.filter((k) => !k.cartao && k.fatura === mes);
   if (sem.length) linhas.push({ cartao: null, total: soma(sem.map((k) => k.valor)), vencimento: null });
@@ -521,7 +593,12 @@ export function itensDaLista(d) {
     id: k.id, tipo: 'cartao', data: null, data_compra: k.data || null, mes: k.fatura, descricao: k.descricao, valor: k.valor,
     categoria: k.categoria, conta: null, situacao: 'cartao', cartao_id: k.cartao || null, recorrencia: k.recorrencia || null,
   }));
-  return [...d.lancamentos, ...cartao];
+  // uma linha por fatura em aberto, com o valor ainda a pagar (atualiza sozinha a cada compra)
+  const faturas = faturasEmAberto(d).map((f) => ({
+    id: `f:${f.cartao.id}:${f.mes}`, tipo: 'fatura', data: f.vencimento, mes: f.mes, descricao: `Fatura ${f.cartao.banco} ${f.cartao.bandeira}`, valor: f.pendente,
+    categoria: null, conta: null, situacao: 'aberto', cartao_id: f.cartao.id, fatura_total: f.total, fatura_pago: f.pago,
+  }));
+  return [...d.lancamentos, ...faturas, ...cartao];
 }
 
 /** Categorias ordenadas pelas mais usadas (para os chips do formulário). Arquivadas ficam de fora, exceto `manterId`. */
@@ -765,7 +842,7 @@ export function remocaoEmprestimo(d, id) {
  *  - movimento de caixinha sem "tipo": entrada = aporte, saída = resgate; aporte que combina com um lançamento de transferência (mesma data e valor) fica ligado a ele;
  *  - empréstimo com lista "movimentos" dentro dele: os movimentos vão para a tabela própria.
  */
-export function migrar(d) {
+export function migrar(d, hoje = hojeISO()) {
   let mudou = false;
   const out = { ...d };
   out.caixinhas = (d.caixinhas || []).map((c) => {
@@ -834,5 +911,71 @@ export function migrar(d) {
     if (!c.total) c.total = out.honorarios.filter((p) => p.contrato === c.id).reduce((s, p) => s + p.valor, 0);
     return c;
   });
+
+  // cartões: faturas que já venceram antes desta versão são histórico (não viram "a pagar"); vale a partir da fatura de hoje
+  out.cartoes = out.cartoes.map((c) => {
+    if (c.controle_desde || !Number.isInteger(c.vencimento) || !Number.isInteger(c.fechamento)) return c;
+    mudou = true;
+    return { ...c, controle_desde: faturaDaCompra(c, hoje).fatura };
+  });
+
+  const v = vincularHonorarios(out);
+  if (v.mudou) { mudou = true; return { d: v.d, mudou }; }
   return { d: out, mudou };
+}
+
+const RE_HONORARIO = /^honor[aá]rios\s*[-–—]\s*(.+?)(?:\s+(\d+)\s+de\s+(\d+))?\s*$/i;
+const diasEntre = (a, b) => Math.abs(Math.round((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 86400000));
+
+/**
+ * Honorários x lançamentos "a receber": liga cada parcela em aberto ao lançamento "Honorários - Cliente" que já existe
+ * para ela (mesmo cliente, valor e mês), para receber uma vez só. Lançamentos "Cliente 01 de 02" sem contrato viram contrato.
+ * Pura e idempotente: só mexe no que ainda não está ligado.
+ */
+export function vincularHonorarios(d) {
+  let mudou = false;
+  const lancs = [...d.lancamentos];
+  const parcelas = [...d.honorarios];
+  const contratos = [...d.contratos];
+  const ligados = new Set(parcelas.flatMap((p) => [p.lanc_previsto, p.lancamento_id]).filter(Boolean));
+  const doHonorario = (l) => l.tipo === 'receita' && !l.honorario_id && !ligados.has(l.id) && RE_HONORARIO.exec(l.descricao || '');
+  const aberto = (l) => l.situacao === 'aberto' || l.situacao === 'atrasado';
+
+  // 1) parcelas em aberto sem ligação ↔ lançamento "a receber" do mesmo cliente, valor e mês
+  parcelas.forEach((p, i) => {
+    if (p.status !== 'aberto' || p.lanc_previsto || p.lancamento_id || !p.vencimento) return;
+    const c = contratos.find((x) => x.id === p.contrato);
+    if (!c) return;
+    const achou = lancs
+      .filter((l) => aberto(l) && doHonorario(l) && norm(RE_HONORARIO.exec(l.descricao)[1]) === norm(c.cliente) && l.valor === p.valor && (l.data || '').slice(0, 7) === p.vencimento.slice(0, 7))
+      .sort((a, b) => diasEntre(a.data, p.vencimento) - diasEntre(b.data, p.vencimento))[0];
+    if (!achou) return;
+    ligados.add(achou.id); parcelas[i] = { ...p, lanc_previsto: achou.id }; mudou = true;
+  });
+
+  // 2) "Cliente 01 de 02" sem contrato nenhum: cria o contrato com as parcelas (as já recebidas ficam como recebidas)
+  const grupos = new Map();
+  for (const l of lancs) {
+    const m = doHonorario(l);
+    if (!m || !m[2]) continue;
+    const chave = `${norm(m[1])}|${m[3]}`;
+    if (!grupos.has(chave)) grupos.set(chave, { cliente: m[1].trim(), qtd: Number(m[3]), porNumero: new Map() });
+    grupos.get(chave).porNumero.set(Number(m[2]), [...(grupos.get(chave).porNumero.get(Number(m[2])) || []), l]);
+  }
+  for (const g of grupos.values()) {
+    if (contratos.some((c) => norm(c.cliente) === norm(g.cliente))) continue;
+    const todas = Array.from({ length: g.qtd }, (_, k) => g.porNumero.get(k + 1));
+    if (g.qtd < 2 || todas.some((x) => !x || x.length !== 1) || !todas.some((x) => aberto(x[0]))) continue;
+    const ls = todas.map((x) => x[0]);
+    const idC = `t_${norm(g.cliente).replace(/ /g, '_')}_${g.qtd}`;
+    contratos.push({ id: idC, cliente: g.cliente, descricao: 'Honorários', total: ls.reduce((a, l) => a + l.valor, 0), qtd: g.qtd });
+    ls.forEach((l, k) => {
+      const paga = l.situacao === 'pago';
+      parcelas.push({ id: `h_${l.id}`, contrato: idC, numero: k + 1, valor: l.valor, vencimento: l.data, status: paga ? 'pago' : 'aberto', ...(paga ? { pago_em: l.data, conta: l.conta, lancamento_id: l.id } : {}), lanc_previsto: l.id });
+      if (paga) lancs[lancs.indexOf(l)] = { ...l, honorario_id: `h_${l.id}` };
+      ligados.add(l.id);
+    });
+    mudou = true;
+  }
+  return { d: mudou ? { ...d, lancamentos: lancs, honorarios: parcelas, contratos } : d, mudou };
 }

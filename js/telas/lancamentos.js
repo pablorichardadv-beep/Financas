@@ -34,7 +34,7 @@ export default function lancamentos(ctx) {
   const grupos = new Map();
   for (const { l, i } of itens) {
     if (l.tipo === 'receita') entradas += l.valor;
-    else if (l.tipo === 'despesa') saidas += l.valor;
+    else if (l.tipo === 'despesa' || l.tipo === 'fatura') saidas += l.valor;
     const chave = l.tipo === 'cartao' ? '~cartao' : l.data || '~semdata';
     if (!grupos.has(chave)) grupos.set(chave, []);
     grupos.get(chave).push({ l, i });
@@ -90,7 +90,7 @@ export default function lancamentos(ctx) {
         : `<div><span class="rot">Entradas</span><b class="verde">+ R$ ${num(entradas)}</b></div>
       <div><span class="rot">Saídas</span><b class="verm">− R$ ${num(saidas)}</b></div>`}
     </div>
-    ${['pagar', 'pagas'].includes(filtro.sit) ? '<p class="nota">Compras no cartão ficam de fora: elas só saem da conta quando você lança o pagamento da fatura.</p>' : ''}
+    ${['pagar', 'pagas'].includes(filtro.sit) ? `<p class="nota">${filtro.sit === 'pagar' ? 'A fatura do cartão em aberto entra aqui com o valor que falta pagar; ' : ''}as compras do cartão, uma a uma, ficam de fora: elas saem da conta quando você paga a fatura.</p>` : ''}
     <div class="grupos">${blocos.length ? blocos.join('') : '<p class="vazio">Nada neste filtro.</p>'}</div>`;
 
   return {

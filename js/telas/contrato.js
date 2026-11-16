@@ -180,6 +180,7 @@ export function abrirParcela(ctx, id) {
     : `<div class="campo"><label for="pv">Valor da parcela</label><input id="pv" inputmode="numeric" autocomplete="off" aria-label="Valor da parcela em reais"></div>
       <div class="campo"><label for="pd">Vencimento</label><input id="pd" type="date" value="${esc(p.vencimento || '')}"></div>
       <div class="erro" id="pe" role="alert"></div>
+      ${D.lancamentoPrevisto(d, p) ? '<p class="nota">Esta parcela está ligada a um lançamento “a receber”. Ao receber, ele é baixado (nada é lançado em dobro); mudar valor ou data aqui muda o lançamento também.</p>' : ''}
       <button class="btn sec" data-salvar>Salvar alterações</button>
       <button class="btn" data-receber>Marcar como recebida</button>
       <button class="btn sec" data-status>${p.status === 'calote' ? 'Reabrir (voltar para a receber)' : 'Marcar como calote'}</button>`;
@@ -195,7 +196,7 @@ export function abrirParcela(ctx, id) {
     const v = D.validarParcela({ valor: valor.obter() });
     if (v.erro) { q('#pe').textContent = v.erro; return; }
     f.fechar();
-    await ctx.gravar([['put', 'honorarios', { ...p, valor: valor.obter(), vencimento: q('#pd').value || null }]]);
+    await ctx.gravar(D.opsEditarParcela(d, p, { valor: valor.obter(), vencimento: q('#pd').value || null }));
     ctx.aviso('Parcela atualizada');
   });
   q('[data-receber]')?.addEventListener('click', () => { f.fechar(); abrirReceber(ctx, p, c); });
@@ -206,8 +207,8 @@ export function abrirParcela(ctx, id) {
   });
   q('[data-desfazer]')?.addEventListener('click', async () => {
     f.fechar();
-    if (!(await confirmar('Desfazer o recebimento?', `A receita de ${reais(p.valor)} é apagada dos lançamentos e o saldo da conta volta ao que era. A parcela volta para “a receber”.`, 'Desfazer', true))) return;
-    await ctx.gravar(D.opsDesfazerRecebimento(p));
+    if (!(await confirmar('Desfazer o recebimento?', D.lancamentoPrevisto(d, { lanc_previsto: p.lanc_previsto }) || (p.lanc_previsto && p.lanc_previsto === p.lancamento_id) ? `A receita de ${reais(p.valor)} volta para “a receber” e o saldo da conta volta ao que era. A parcela volta para “a receber”.` : `A receita de ${reais(p.valor)} é apagada dos lançamentos e o saldo da conta volta ao que era. A parcela volta para “a receber”.`, 'Desfazer', true))) return;
+    await ctx.gravar(D.opsDesfazerRecebimento(p, d));
     ctx.aviso('Recebimento desfeito');
   });
   q('[data-excluir]').onclick = async () => {
@@ -232,7 +233,7 @@ export function abrirReceber(ctx, p, c) {
     <div class="campo sel"><label for="rc">Entrou na conta</label><select id="rc">${ativas.map((a) => `<option value="${esc(a.id)}" ${a.id === sug ? 'selected' : ''}>${esc(a.nome)}</option>`).join('')}</select></div>
     <div class="campo"><label for="rd">Data do recebimento</label><input id="rd" type="date" value="${hojeISO()}"></div>
     <div class="campo sel"><label for="rk">Categoria</label><select id="rk">${cats.map((x) => `<option value="${esc(x.id)}" ${x.id === cat ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div>
-    <p class="nota">O app lança uma receita de ${reais(p.valor)} nessa conta. Se o cliente pagou outro valor, cancele e ajuste o valor da parcela antes.</p>
+    <p class="nota">${D.lancamentoPrevisto(d, p) ? `O lançamento “a receber” desta parcela (${reais(p.valor)}) é baixado nessa conta, sem criar outro.` : `O app lança uma receita de ${reais(p.valor)} nessa conta.`} Se o cliente pagou outro valor, cancele e ajuste o valor da parcela antes.</p>
     <div class="erro" id="re" role="alert"></div>
     <button class="btn" data-ok>Confirmar recebimento</button>`);
   const q = (s) => f.el.querySelector(s);

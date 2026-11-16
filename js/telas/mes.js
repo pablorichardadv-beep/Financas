@@ -32,7 +32,7 @@ export default function mes(ctx) {
         <div class="lin"><span>Previsto</span><b class="${cor(r.saldoPrevisto)}">${reais(r.saldoPrevisto)}</b></div>
         <div class="lin"><span>Efetuado</span><b class="${cor(r.saldoEfetuado)}">${reais(r.saldoEfetuado)}</b></div>
         <div class="lin tot"><span>Total</span><b class="${cor(r.saldo)}">${reais(r.saldo)}</b></div></div>
-      <p class="nota">Previsto = ainda vai entrar ou sair (lançamentos “a receber” e “a pagar”). Efetuado = recebido menos pago. Compras no cartão entram quando você lança o pagamento da fatura.</p>
+      <p class="nota">Previsto = ainda vai entrar ou sair (lançamentos “a receber” e “a pagar”). Efetuado = recebido menos pago. Faturas de cartão ainda não pagas entram como despesa prevista; ao pagar a fatura, viram despesa paga.</p>
     </section>
     <section class="card" aria-label="Despesas por categoria">
       <h2>Despesas por categoria</h2>
@@ -41,9 +41,9 @@ export default function mes(ctx) {
     </section>
     ${fatura ? `<section class="card" aria-label="Cartão de crédito"><div class="linha-tit"><h2>Faturas dos cartões</h2><b class="verm">${reais(fatura)}</b></div>
       ${faturas.length > 1 || faturas[0]?.cartao ? `<div class="lista">${faturas.map((x) => x.cartao
-        ? `<a class="item" href="#/cartao/${esc(x.cartao.id)}"><span class="t"><b>${esc(x.cartao.banco)} · final ${esc(x.cartao.final)}</b><small>vence em ${dataBR(x.vencimento)}</small></span><span class="v verm">${reais(x.total)} <span class="rot">›</span></span></a>`
+        ? `<a class="item" href="#/cartao/${esc(x.cartao.id)}"><span class="t"><b>${esc(x.cartao.banco)} · final ${esc(x.cartao.final)}</b><small>vence em ${dataBR(x.vencimento)} · ${x.status === 'paga' ? 'paga' : x.status === 'parcial' ? `paga em parte (falta ${reais(x.pendente)})` : x.status === 'aberta' ? 'em aberto' : 'anterior ao controle'}</small></span><span class="v verm">${reais(x.total)} <span class="rot">›</span></span></a>`
         : `<div class="item"><span class="t"><b>Compras sem cartão</b><small>lançadas antes do cadastro dos cartões</small></span><span class="v verm">${reais(x.total)}</span></div>`).join('')}</div>` : ''}
-      <p class="nota">Compras no cartão ficam fora das despesas acima. Elas saem da conta quando você lança o pagamento da fatura (ex.: “Cartão Nubank”).</p></section>` : ''}
+      <p class="nota">A fatura em aberto está nas despesas previstas do mês. Nas categorias acima, as compras do cartão contam pela fatura em que vencem.</p></section>` : ''}
     <a class="link" href="#/categorias" style="justify-content:center">Gerenciar categorias ›</a>
     <p class="nota" style="text-align:center">Metas por categoria (Ideal %) entram na próxima etapa.</p>`;
 

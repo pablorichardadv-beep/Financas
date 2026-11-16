@@ -1,6 +1,6 @@
 // Peças compartilhadas entre as telas.
 import { esc, folha, confirmar } from '../ui.js';
-import { comSinal, dataCurta, dataBR, reais, num } from '../format.js';
+import { comSinal, dataCurta, dataBR, reais, num, hojeISO } from '../format.js';
 import * as D from '../domain.js';
 
 const mapa = (arr) => new Map(arr.map((x) => [x.id, x]));
@@ -20,6 +20,7 @@ export const destinoTransf = (l, n) => nomePonta(l, 'destino', n);
 export const tituloItem = (l) => l.descricao || (l.tipo === 'transferencia' ? 'Transferência entre contas' : 'Sem descrição');
 
 function tagDe(l) {
+  if (l.tipo === 'fatura') return l.data < hojeISO() ? '<span class="tag verm">Atrasada</span>' : '<span class="tag ouro">Em aberto</span>';
   if (l.tipo === 'cartao') return '<span class="tag azul">Cartão</span>';
   if (l.tipo === 'transferencia') return '';
   if (l.situacao === 'aberto') return `<span class="tag ouro">${l.tipo === 'receita' ? 'A receber' : 'A pagar'}</span>`;
@@ -32,10 +33,15 @@ function tagDe(l) {
 export function linhaItem(l, n, { comData = false } = {}) {
   const partes = [];
   if (comData && (l.data || l.data_compra)) partes.push(dataCurta(l.data || l.data_compra));
-  if (l.tipo === 'transferencia') partes.push(`${origemTransf(l, n)} → ${destinoTransf(l, n)}`);
+  if (l.tipo === 'fatura') {
+    const c = n.cartao.get(l.cartao_id);
+    partes.push(`${c ? `${c.banco} ••${c.final}` : 'Cartão'}`, `vence ${dataBR(l.data).slice(0, 5)}`);
+    if (l.fatura_pago > 0) partes.push(`já pago ${reais(l.fatura_pago)}`);
+  } else if (l.tipo === 'transferencia') partes.push(`${origemTransf(l, n)} → ${destinoTransf(l, n)}`);
   else {
     const cat = l.categoria && n.cat.get(l.categoria)?.nome;
     if (cat) partes.push(cat);
+    if (l.fatura_cartao) partes.push('Pagamento de fatura');
     const cartao = l.tipo === 'cartao' && l.cartao_id && n.cartao.get(l.cartao_id);
     if (cartao) partes.push(`${cartao.banco} ••${cartao.final}`);
     if (l.tipo === 'cartao' && l.recorrencia) partes.push('Recorrente');
