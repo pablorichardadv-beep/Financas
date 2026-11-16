@@ -14,6 +14,7 @@ import emprestimo from './telas/emprestimos.js';
 import honorario from './telas/contrato.js';
 import cartao from './telas/cartoes.js';
 import * as D from './domain.js';
+import { hojeISO } from './format.js';
 
 const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo, honorario, cartao };
 // telas que pertencem a "Contas" (o botão da barra inferior continua marcado)
@@ -66,6 +67,9 @@ async function iniciar() {
     // dados gravados por versões antigas do app são convertidos uma vez para o formato atual
     const m = D.migrar(d);
     if (m.mudou) { await DB.substituirTudo(m.d); d = await DB.carregarTudo(); }
+    // compras recorrentes: completa os meses que faltam nas faturas
+    const rec = D.opsRecorrencias(d, hojeISO());
+    if (rec.length) { await DB.lote(rec); d = await DB.carregarTudo(); }
     ctx.dados = d;
     navigator.storage?.persist?.();
   } catch (e) {

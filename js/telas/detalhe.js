@@ -2,6 +2,7 @@
 import { esc, folha, confirmar } from '../ui.js';
 import { reais, dataBR, hojeISO, mesNome } from '../format.js';
 import * as D from '../domain.js';
+import { abrirRecorrencia } from './cartoes.js';
 import { estaPago, estaAberto, contasAtivas, ligadaAEmprestimo, ligadaAHonorario, opsAoExcluirLancamento } from '../domain.js';
 import { nomes, origemTransf, destinoTransf, tituloItem } from './comum.js';
 
@@ -32,10 +33,14 @@ export function abrirDetalhe(ctx, id) {
     const c = d.cartoes.find((x) => x.id === l.cartao);
     const dc = linhas.find((x) => x[0] === 'Data');
     if (dc) dc[0] = 'Data da compra';
+    if (l.parcela) linhas.push(['Parcela', `${l.parcela} de ${l.parcelas}`]);
+    if (l.recorrencia) linhas.push(['Recorrência', d.recorrencias.find((x) => x.id === l.recorrencia)?.ativa ? 'Todo mês' : 'Cancelada']);
     linhas.unshift(['Cartão', c ? D.rotuloCartao(c) : 'Sem cartão (compra antiga)']);
     linhas.push(['Fatura', c ? `${mesNome(l.mes)} · vence em ${dataBR(D.datasDaFatura(c, l.mes).vencimento)}` : mesNome(l.mes)]);
   }
   if (l.tipo !== 'transferencia') linhas.push(['Situação', SITUACAO[l.situacao] || l.situacao]);
+  const recAtiva = ehCartao && l.recorrencia && d.recorrencias.find((x) => x.id === l.recorrencia && x.ativa);
+  const irmas = ehCartao && l.grupo ? d.compras_cartao.filter((x) => x.grupo === l.grupo) : [];
   const doEmprestimo = l.tipo === 'transferencia' && ligadaAEmprestimo(l);
   const doHonorario = ligadaAHonorario(l);
   const podePagar = !ehCartao && l.tipo !== 'transferencia' && !estaPago(l) && (estaAberto(l) || l.situacao === 'guardar');
@@ -45,7 +50,9 @@ export function abrirDetalhe(ctx, id) {
     <div class="card" style="gap:0;padding:6px 16px">${linhas.map(([a, b]) => `<div class="item"><span class="rot">${esc(a)}</span><b style="font-size:14.5px">${esc(b)}</b></div>`).join('')}</div>
     ${podePagar ? `<button class="btn" data-pagar>${l.tipo === 'receita' ? 'Marcar como recebida' : 'Marcar como paga'}</button>` : ''}
     ${doHonorario ? '<p class="nota">Este lançamento é o recebimento de um honorário. Para corrigir, abra o honorário em Contas e desfaça o recebimento. Se você excluir este lançamento, a parcela volta para “a receber”.</p>' : doEmprestimo ? '<p class="nota">Este lançamento faz parte de um empréstimo. Para corrigir, exclua-o e registre de novo pela tela do empréstimo.</p>' : '<button class="btn sec" data-editar>Editar</button>'}
-    <button class="btn perigo" data-excluir>Excluir</button>`);
+    <button class="btn perigo" data-excluir>${irmas.length > 1 ? 'Excluir só esta parcela' : 'Excluir'}</button>
+    ${recAtiva ? '<button class="btn sec" data-recorrencia>Mudar valor ou cancelar a recorrência</button>' : ''}
+    ${irmas.length > 1 ? `<button class="btn perigo" data-excluir-todas>Excluir as ${irmas.length} parcelas da compra</button>` : ''}`);
 
   const be = f.el.querySelector('[data-editar]');
   if (be) be.onclick = () => { f.fechar(); ctx.ir('novo/' + id); };
@@ -56,10 +63,20 @@ export function abrirDetalhe(ctx, id) {
     const ops = [['del', ehCartao ? 'compras_cartao' : 'lancamentos', id]];
     for (const m of d.caixinha_movimentos) if (m.lancamento_id === id) ops.push(['del', 'caixinha_movimentos', m.id]);
     for (const m of d.emprestimo_movimentos) if (m.lancamento_id === id) ops.push(['del', 'emprestimo_movimentos', m.id]);
+    // excluir só uma cobrança recorrente: o mês fica de fora, para o app não recriar
+    if (recAtiva && l.data) ops.push(['put', 'recorrencias', { ...recAtiva, pulados: [...(recAtiva.pulados || []), l.data.slice(0, 7)] }]);
     if (!ehCartao) ops.push(...opsAoExcluirLancamento(d, l));
     await ctx.gravar(ops);
     ctx.aviso('Lançamento excluído');
   };
+
+  f.el.querySelector('[data-recorrencia]')?.addEventListener('click', () => { f.fechar(); abrirRecorrencia(ctx, l.recorrencia); });
+  f.el.querySelector('[data-excluir-todas]')?.addEventListener('click', async () => {
+    f.fechar();
+    if (!(await confirmar('Excluir a compra inteira?', `As ${irmas.length} parcelas de “${(l.descricao || '').replace(/ \(\d+\/\d+\)$/, '')}” serão removidas das faturas. Isso muda os totais.`, 'Excluir tudo', true))) return;
+    await ctx.gravar(irmas.map((x) => ['del', 'compras_cartao', x.id]));
+    ctx.aviso('Compra parcelada excluída');
+  });
 
   const bp = f.el.querySelector('[data-pagar]');
   if (bp) bp.onclick = () => {

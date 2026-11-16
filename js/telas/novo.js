@@ -39,7 +39,30 @@ export default function novo(ctx, args) {
     if (!c) return d.cartoes.length ? 'Escolha o cartão para ver em qual fatura a compra entra.' : 'Cadastre o cartão para a compra entrar na fatura certa.';
     if (!f.data) return '';
     const r = D.faturaDaCompra(c, f.data);
-    return `Entra na fatura de ${mesNome(r.fatura)} (fecha em ${dataBR(r.fechamento)}, vence em ${dataBR(r.vencimento)}).`;
+    const base = `Entra na fatura de ${mesNome(r.fatura)} (fecha em ${dataBR(r.fechamento)}, vence em ${dataBR(r.vencimento)}).`;
+    return base;
+  }
+
+  function textoParcelas() {
+    if (idEdicao) return f.parcela_de ? `Esta é a parcela ${f.parcela_de} de uma compra parcelada. Aqui você muda só esta parcela.` : f.recorrencia_de ? 'Esta é uma cobrança de compra recorrente. Aqui você muda só esta cobrança; para mudar o valor das próximas ou cancelar, abra o cartão.' : '';
+    if (f.recorrente) {
+      const c = d.cartoes.find((x) => x.id === f.cartao_id);
+      const ini = c && f.data ? D.faturaDaCompra(c, f.data).fatura : null;
+      return `Cai todo mês${f.data ? `, no dia ${Number(f.data.slice(8, 10))}` : ''}${ini ? `, a partir da fatura de ${mesNome(ini)}` : ''}, até você cancelar (na tela do cartão). O valor digitado é o de cada mês.`;
+    }
+    const n = f.parcelas;
+    if (!(n > 1)) return '';
+    if (!(f.valor >= n)) return 'Informe o valor total da compra para ver as parcelas.';
+    const ps = D.gerarParcelasCompra({ valor: f.valor, qtd: n, fatura: '2000-01' });
+    const c = d.cartoes.find((x) => x.id === f.cartao_id);
+    const ini = c && f.data ? D.faturaDaCompra(c, f.data).fatura : null;
+    const dif = ps[0].valor !== ps[1].valor;
+    return `${n}x de R$ ${num(ps[1].valor)}${dif ? ` (a 1ª de R$ ${num(ps[0].valor)})` : ''}, uma em cada fatura${ini ? `, de ${mesNome(ini)} a ${mesNome(D.somarMesFatura(ini, n - 1))}` : ''}. O valor digitado é o total da compra.`;
+  }
+
+  function atualizarInfoCartao() {
+    const a = raiz.querySelector('#fatura'); if (a) a.textContent = textoFatura();
+    const b = raiz.querySelector('#parcelas-info'); if (b) b.textContent = textoParcelas();
   }
 
   function html() {
@@ -75,8 +98,11 @@ export default function novo(ctx, args) {
         corpo.push(`<div class="campo"><div class="chave"><span>Foi no cartão de crédito</span><button data-cartao class="${f.cartao ? 'on' : ''}" role="switch" aria-checked="${f.cartao}" aria-label="Compra no cartão de crédito"></button></div>${f.cartao ? '<p class="nota" style="margin:-4px 0 4px">Entra na fatura do cartão e só sai da conta quando você lançar o pagamento da fatura.</p>' : ''}</div>`);
         if (f.cartao) {
           const cs = D.cartoesAtivos(d, f.cartao_id);
-          corpo.push(`<div class="campo sel"><label for="cartao">Cartão</label><select id="cartao"><option value="">${f.legado ? 'Sem cartão (compra antiga)' : 'Escolher…'}</option>${cs.map((c) => `<option value="${esc(c.id)}" ${c.id === f.cartao_id ? 'selected' : ''}>${esc(D.rotuloCartao(c))}</option>`).join('')}</select></div>
-            <button class="link" data-novo-cartao style="align-self:flex-start">+ Cadastrar cartão</button><p class="nota" id="fatura" aria-live="polite">${esc(textoFatura())}</p>`);
+          corpo.push(`<div class="${idEdicao || f.recorrente ? '' : 'dois'}" style="align-items:end">
+              <div class="campo sel"><label for="cartao">Cartão</label><select id="cartao"><option value="">${f.legado ? 'Sem cartão (compra antiga)' : 'Escolher…'}</option>${cs.map((c) => `<option value="${esc(c.id)}" ${c.id === f.cartao_id ? 'selected' : ''}>${esc(D.rotuloCartao(c))}</option>`).join('')}</select></div>
+              ${idEdicao || f.recorrente ? '' : `<div class="campo"><label for="parcelas">Parcelas</label><input id="parcelas" type="number" inputmode="numeric" min="1" max="${D.MAX_PARCELAS}" value="${f.parcelas}" aria-label="Quantidade de parcelas"></div>`}</div>
+            <button class="link" data-novo-cartao style="align-self:flex-start">+ Cadastrar cartão</button><p class="nota" id="fatura" aria-live="polite">${esc(textoFatura())}</p><p class="nota" id="parcelas-info" aria-live="polite">${esc(textoParcelas())}</p>
+            ${idEdicao ? '' : `<div class="campo"><div class="chave"><span>Compra recorrente (todo mês)</span><button data-recorrente class="${f.recorrente ? 'on' : ''}" role="switch" aria-checked="${f.recorrente}" aria-label="Compra recorrente"></button></div></div>`}`);
         }
       }
     }
@@ -127,9 +153,24 @@ export default function novo(ctx, args) {
     if (dados.cartao && dados.tipo === 'despesa') {
       const id = eraCartao ? base : novoId('k');
       const c = d.cartoes.find((x) => x.id === dados.cartao_id);
-      const fatura = c ? D.faturaDaCompra(c, dados.data).fatura : dados.legadoFatura || dados.data.slice(0, 7);
+      const antigoK = eraCartao ? d.compras_cartao.find((x) => x.id === base) : null;
+      // uma parcela mantém a sua posição: a data é a da compra e a fatura anda um mês por parcela
+      const fatura = c ? D.somarMesFatura(D.faturaDaCompra(c, dados.data).fatura, (antigoK?.parcela || 1) - 1) : dados.legadoFatura || dados.data.slice(0, 7);
       mesLista = fatura;
-      ops.push(['put', 'compras_cartao', { id, cartao: c ? c.id : null, fatura, data: dados.data, descricao: dados.descricao.trim(), valor: dados.valor, categoria: dados.categoria || null }]);
+      const registro = { id, cartao: c ? c.id : null, fatura, data: dados.data, descricao: dados.descricao.trim(), valor: dados.valor, categoria: dados.categoria || null };
+      if (!eraCartao && c && dados.recorrente) {
+        // recorrente: guarda a regra e cria as cobranças dos próximos meses (o app completa os meses seguintes ao abrir)
+        const r = { id: novoId('q'), cartao: c.id, descricao: registro.descricao, valor: dados.valor, categoria: dados.categoria || null, dia: Number(dados.data.slice(8, 10)), inicio: dados.data, ativa: true, pulados: [] };
+        ops.push(['put', 'recorrencias', r], ...D.opsRecorrencias({ ...d, recorrencias: [r] }, hojeISO()));
+      } else if (!eraCartao && c && dados.parcelas > 1) {
+        // compra parcelada: o valor é o total; cada parcela vai para uma fatura e leva "(n/N)" na descrição
+        const grupo = novoId('g');
+        for (const p of D.gerarParcelasCompra({ valor: dados.valor, qtd: dados.parcelas, fatura })) {
+          ops.push(['put', 'compras_cartao', { ...registro, id: novoId('k'), valor: p.valor, fatura: p.fatura, descricao: `${registro.descricao} (${p.numero}/${dados.parcelas})`, parcela: p.numero, parcelas: dados.parcelas, grupo }]);
+        }
+      } else {
+        ops.push(['put', 'compras_cartao', antigoK ? { ...antigoK, ...registro } : registro]);
+      }
       if (base && !eraCartao) ops.push(['del', 'lancamentos', base]);
     } else if (dados.tipo === 'transferencia') {
       const idL = base && !eraCartao ? base : null;
@@ -170,18 +211,20 @@ export default function novo(ctx, args) {
       f.tipo = b.dataset.tipo;
       f.categoria = null; f.catManual = false; f.contaManual = false;
       if (f.tipo === 'receita' && !['pago', 'aberto'].includes(f.situacao)) f.situacao = 'pago';
-      if (f.tipo !== 'despesa') f.cartao = false;
+      if (f.tipo !== 'despesa') { f.cartao = false; f.recorrente = false; }
       f.conta = D.ultimaContaUsada(d, f.tipo === 'transferencia' ? 'despesa' : f.tipo) || f.conta || D.contasAtivas(d)[0]?.id || '';
       f.conta_origem = f.conta; f.origem_caixinha = null; f.conta_destino = null; f.destino_caixinha = null;
       redesenhar();
     }));
     raiz.querySelectorAll('[data-cat]').forEach((b) => (b.onclick = () => { f.categoria = f.categoria === b.dataset.cat ? null : b.dataset.cat; f.catManual = true; redesenhar(); }));
     raiz.querySelectorAll('[data-sit]').forEach((b) => (b.onclick = () => { f.situacao = b.dataset.sit; redesenhar(); }));
-    q('[data-cartao]')?.addEventListener('click', () => { f.cartao = !f.cartao; if (f.cartao) { f.situacao = 'pago'; f.cartao_id ||= D.ultimoCartaoUsado(d); } redesenhar(); });
-    q('#cartao')?.addEventListener('change', (e) => { f.cartao_id = e.target.value || null; q('#fatura').textContent = textoFatura(); });
+    q('[data-cartao]')?.addEventListener('click', () => { f.cartao = !f.cartao; if (!f.cartao) { f.recorrente = false; f.parcelas = 1; } if (f.cartao) { f.situacao = 'pago'; f.cartao_id ||= D.ultimoCartaoUsado(d); } redesenhar(); });
+    q('#cartao')?.addEventListener('change', (e) => { f.cartao_id = e.target.value || null; atualizarInfoCartao(); });
+    q('[data-recorrente]')?.addEventListener('click', () => { f.recorrente = !f.recorrente; f.parcelas = 1; redesenhar(); });
+    q('#parcelas')?.addEventListener('input', (e) => { const n = Number.parseInt(e.target.value, 10); f.parcelas = Number.isNaN(n) ? 0 : n; atualizarInfoCartao(); });
     q('[data-novo-cartao]')?.addEventListener('click', () => abrirEditorCartao(ctx, null, { semRender: true, aoSalvar: (id) => { f.cartao_id = id; redesenhar(); } }));
 
-    ligarCampoValor(q('#valor'), f.valor, (v) => { f.valor = v; });
+    ligarCampoValor(q('#valor'), f.valor, (v) => { f.valor = v; atualizarInfoCartao(); });
     q('[data-nova-cat]')?.addEventListener('click', () => abrirEditorCategoria(ctx, null, {
       tipo: f.tipo, semRender: true,
       aoSalvar: (cat) => { f.categoria = cat.id; f.catManual = true; redesenhar(); },
@@ -189,7 +232,7 @@ export default function novo(ctx, args) {
 
     q('#desc')?.addEventListener('input', (e) => { f.descricao = e.target.value; });
     q('#desc')?.addEventListener('change', () => { aplicarMemoria(); });
-    q('#data')?.addEventListener('change', (e) => { f.data = e.target.value; const t = q('#fatura'); if (t) t.textContent = textoFatura(); });
+    q('#data')?.addEventListener('change', (e) => { f.data = e.target.value; atualizarInfoCartao(); });
     q('#conta')?.addEventListener('change', (e) => { f.conta = e.target.value; f.contaManual = true; });
     q('#orig')?.addEventListener('change', (e) => {
       const v = e.target.value;
@@ -217,14 +260,14 @@ export default function novo(ctx, args) {
 function estadoInicial(d, id) {
   const base = {
     tipo: 'despesa', valor: 0, descricao: '', data: hojeISO(), conta: D.ultimaContaUsada(d, 'despesa') || D.contasAtivas(d)[0]?.id || '', conta_origem: null,
-    conta_destino: null, destino_caixinha: null, origem_caixinha: null, categoria: null, situacao: 'pago', cartao: false, cartao_id: null, legado: false, legadoFatura: null, catManual: false, contaManual: false,
+    conta_destino: null, destino_caixinha: null, origem_caixinha: null, categoria: null, situacao: 'pago', cartao: false, cartao_id: null, parcelas: 1, recorrente: false, legado: false, legadoFatura: null, catManual: false, contaManual: false,
   };
   base.conta_origem = base.conta;
   if (!id) return base;
   if (id.startsWith('k')) {
     const k = d.compras_cartao.find((x) => x.id === id);
     if (!k) return { erroCarga: true };
-    return { ...base, tipo: 'despesa', valor: k.valor, descricao: k.descricao, data: k.data || `${k.fatura}-01`, categoria: k.categoria, cartao: true, cartao_id: k.cartao || null, legado: !k.cartao, legadoFatura: k.fatura, catManual: true, contaManual: true };
+    return { ...base, tipo: 'despesa', valor: k.valor, descricao: k.descricao, data: k.data || `${k.fatura}-01`, categoria: k.categoria, cartao: true, cartao_id: k.cartao || null, parcelas: 1, recorrente: false, recorrencia_de: k.recorrencia || null, parcela_de: k.parcela ? `${k.parcela}/${k.parcelas}` : null, legado: !k.cartao, legadoFatura: k.fatura, catManual: true, contaManual: true };
   }
   const l = d.lancamentos.find((x) => x.id === id);
   if (!l) return { erroCarga: true };

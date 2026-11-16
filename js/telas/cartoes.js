@@ -1,5 +1,5 @@
 // Cartões de crédito: tela do cartão (faturas e compras) e cadastro. Rota: #/cartao/<id>
-import { esc, folha, confirmar } from '../ui.js';
+import { esc, folha, confirmar, ligarCampoValor } from '../ui.js';
 import { reais, hojeISO, dataBR, mesNome } from '../format.js';
 import * as D from '../domain.js';
 import { nomes, linhaItem } from './comum.js';
@@ -25,6 +25,7 @@ export default function cartao(ctx, args) {
   const f = faturas.find((x) => x.mes === mesEscolhido) || { mes: mesEscolhido, compras: [], total: 0, ...D.datasDaFatura(c, mesEscolhido) };
   const n = nomes(d);
   const emAberto = f.fechamento >= hoje;
+  const recs = d.recorrencias.filter((r) => r.cartao === c.id && r.ativa);
 
   const html = `
     <header class="topo"><div><a class="link" href="#/contas">‹ Contas</a><h1 class="grande">${esc(c.banco)}</h1></div><button class="link" data-editar>Editar</button></header>
@@ -40,6 +41,9 @@ export default function cartao(ctx, args) {
     <button class="btn" data-compra>+ Compra neste cartão</button>
     <section class="card" style="gap:2px"><h2>Compras da fatura</h2>
       <div class="lista">${f.compras.length ? f.compras.map((k) => linhaItem({ id: k.id, tipo: 'cartao', data: null, data_compra: k.data, mes: k.fatura, descricao: k.descricao, valor: k.valor, categoria: k.categoria, situacao: 'cartao', cartao_id: null }, n, { comData: true })).join('') : '<p class="vazio">Nenhuma compra nesta fatura.</p>'}</div></section>
+    ${recs.length ? `<section class="card" style="gap:2px"><h2>Compras recorrentes</h2>
+      <div class="lista">${recs.map((r) => `<button class="item" data-rec="${esc(r.id)}"><span class="t"><b>${esc(r.descricao)}</b><small>todo dia ${r.dia}${n.cat.get(r.categoria) ? ' · ' + esc(n.cat.get(r.categoria).nome) : ''}</small></span><span class="v verm">${reais(r.valor)} <span class="rot">›</span></span></button>`).join('')}</div>
+      <p class="nota">Cai todo mês na fatura até você cancelar. Toque para mudar o valor ou cancelar.</p></section>` : ''}
     <p class="nota" style="text-align:center">Compras feitas até o dia ${c.fechamento} entram na fatura que vence no mesmo mês ou no seguinte, conforme o seu vencimento. Elas saem da conta quando você lança o pagamento da fatura (ex.: “Cartão ${esc(c.banco)}”).</p>`;
 
   return {
@@ -48,6 +52,7 @@ export default function cartao(ctx, args) {
       raiz.querySelector('[data-editar]').onclick = () => abrirEditorCartao(ctx, c.id);
       raiz.querySelector('[data-mes]').addEventListener('change', (e) => { mesEscolhido = e.target.value; ctx.recarregar(); });
       raiz.querySelector('[data-compra]').onclick = () => { prepararNovo({ cartao: true, cartao_id: c.id }); ctx.ir('novo'); };
+      raiz.querySelectorAll('[data-rec]').forEach((b) => (b.onclick = () => abrirRecorrencia(ctx, b.dataset.rec)));
       raiz.querySelectorAll('.item[data-id]').forEach((b) => (b.onclick = () => abrirDetalhe(ctx, b.dataset.id)));
     },
   };
@@ -132,4 +137,38 @@ export function abrirEditorCartao(ctx, id = null, { aoSalvar, semRender = false 
     await ctx.gravar([['del', 'cartoes', id]]);
     ctx.aviso('Cartão excluído');
   });
+}
+
+// ---------------------------------------------------------------- compra recorrente: mudar valor ou cancelar
+export function abrirRecorrencia(ctx, id) {
+  const d = ctx.dados;
+  const r = d.recorrencias.find((x) => x.id === id);
+  const c = r && d.cartoes.find((x) => x.id === r.cartao);
+  if (!r || !c) return;
+  const hoje = hojeISO();
+  const futuras = d.compras_cartao.filter((k) => k.recorrencia === r.id && k.data > hoje);
+  const f = folha(`
+    <div><h2>${esc(r.descricao)}</h2><p class="rot">${esc(D.rotuloCartao(c))} · todo dia ${r.dia} · desde ${esc(dataBR(r.inicio))}${r.ativa ? '' : ' · cancelada'}</p></div>
+    ${r.ativa ? `<div class="campo"><label for="rv">Valor de cada mês</label><input id="rv" inputmode="numeric" autocomplete="off" aria-label="Valor mensal em reais"></div>
+      <div class="erro" id="re" role="alert"></div>
+      <button class="btn" data-salvar>Salvar novo valor</button>
+      <p class="nota">O novo valor vale a partir das próximas cobranças (${plural(futuras.length, 'cobrança já lançada', 'cobranças já lançadas')} nas faturas futuras). As anteriores não mudam.</p>
+      <button class="btn perigo" data-cancelar>Cancelar recorrência</button>` : '<p class="nota">Esta compra recorrente foi cancelada.</p>'}
+    <button class="btn sec" data-fechar>Fechar</button>`);
+  const q = (s) => f.el.querySelector(s);
+  q('[data-fechar]').onclick = f.fechar;
+  if (!r.ativa) return;
+  const valor = ligarCampoValor(q('#rv'), r.valor, undefined, { substituir: true });
+  q('[data-salvar]').onclick = async () => {
+    if (!(valor.obter() > 0)) { q('#re').textContent = 'Informe o valor.'; return; }
+    f.fechar();
+    await ctx.gravar(D.opsValorRecorrencia(d, r, valor.obter(), hoje));
+    ctx.aviso('Valor atualizado');
+  };
+  q('[data-cancelar]').onclick = async () => {
+    f.fechar();
+    if (!(await confirmar(`Cancelar “${r.descricao}”?`, `Para de cair todo mês. ${plural(futuras.length, 'cobrança futura sai', 'cobranças futuras saem')} das faturas; o que já foi lançado até hoje continua.`, 'Cancelar recorrência', true))) return;
+    await ctx.gravar(D.opsCancelarRecorrencia(d, r, hoje));
+    ctx.aviso('Recorrência cancelada');
+  };
 }

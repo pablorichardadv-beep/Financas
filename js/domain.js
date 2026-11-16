@@ -1,5 +1,5 @@
 // Regras e cálculos do controle financeiro. Funções puras: recebem os dados (d) e devolvem números/listas.
-// d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios (parcelas), contratos, cartoes }
+// d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios (parcelas), contratos, cartoes, recorrencias }
 // Todos os valores em CENTAVOS.
 
 import { norm, novoId } from './format.js';
@@ -345,6 +345,62 @@ export function faturaDaCompra(c, dataISO) {
   return { fatura, ...datasDaFatura(c, fatura) };
 }
 
+export const MAX_PARCELAS = 48;
+
+// compra recorrente = { id, cartao, descricao, valor, categoria, dia (do mês), inicio (data da 1ª cobrança), ativa, cancelada_em?, pulados: ['AAAA-MM'] }
+// As cobranças viram compras normais do cartão (com `recorrencia: id`), criadas com `horizonte` meses de antecedência;
+// o app completa os meses que faltam toda vez que abre.
+export function opsRecorrencias(d, hoje, horizonte = 12) {
+  const ops = [];
+  const [ah, mh] = hoje.split('-').map(Number);
+  const [af, mf] = addMes(ah, mh, horizonte);
+  const fim = `${af}-${String(mf).padStart(2, '0')}`;
+  for (const r of d.recorrencias) {
+    const c = r.ativa && d.cartoes.find((x) => x.id === r.cartao);
+    if (!c) continue;
+    const tem = new Set(d.compras_cartao.filter((k) => k.recorrencia === r.id && k.data).map((k) => k.data.slice(0, 7)));
+    const pulados = new Set(r.pulados || []);
+    for (let ym = r.inicio.slice(0, 7); ym <= fim; ym = somarMesFatura(ym, 1)) {
+      if (tem.has(ym) || pulados.has(ym)) continue;
+      const [a, m] = ym.split('-').map(Number);
+      const data = isoDia(a, m, r.dia);
+      if (data < r.inicio) continue;
+      ops.push(['put', 'compras_cartao', { id: novoId('k'), cartao: c.id, fatura: faturaDaCompra(c, data).fatura, data, descricao: r.descricao, valor: r.valor, categoria: r.categoria || null, recorrencia: r.id }]);
+    }
+  }
+  return ops;
+}
+
+/** Cancelar: as cobranças de hoje para trás continuam; as futuras saem das faturas. */
+export function opsCancelarRecorrencia(d, r, hoje) {
+  return [
+    ['put', 'recorrencias', { ...r, ativa: false, cancelada_em: hoje }],
+    ...d.compras_cartao.filter((k) => k.recorrencia === r.id && k.data > hoje).map((k) => ['del', 'compras_cartao', k.id]),
+  ];
+}
+
+/** Novo valor vale para as cobranças futuras; as já lançadas ficam como estão. */
+export function opsValorRecorrencia(d, r, valor, hoje) {
+  return [
+    ['put', 'recorrencias', { ...r, valor }],
+    ...d.compras_cartao.filter((k) => k.recorrencia === r.id && k.data > hoje).map((k) => ['put', 'compras_cartao', { ...k, valor }]),
+  ];
+}
+
+/** Soma `k` meses a um mês 'AAAA-MM'. */
+export const somarMesFatura = (ym, k) => { const [a, m] = ym.split('-').map(Number); const [x, y] = addMes(a, m, k); return `${x}-${String(y).padStart(2, '0')}`; };
+
+/**
+ * Compra parcelada no cartão: o valor informado é o TOTAL. Divide em partes iguais (o que sobrar em centavos
+ * fica na 1ª parcela) e cada parcela cai na fatura do mês seguinte à anterior, a partir de `fatura`.
+ */
+export function gerarParcelasCompra({ valor, qtd, fatura }) {
+  const base = Math.floor(valor / qtd);
+  return Array.from({ length: qtd }, (_, i) => ({ numero: i + 1, valor: i === 0 ? base + (valor - base * qtd) : base, fatura: somarMesFatura(fatura, i) }));
+}
+
+export const validarParcelas = (qtd) => (Number.isInteger(qtd) && qtd >= 1 && qtd <= MAX_PARCELAS ? { ok: true } : { erro: `O número de parcelas deve ficar entre 1 e ${MAX_PARCELAS}.` });
+
 export function validarCartao(d, { id = null, banco, bandeira, final, vencimento, fechamento }) {
   const b = String(banco || '').trim().replace(/\s+/g, ' ');
   const fim = String(final || '').trim();
@@ -366,7 +422,7 @@ export function idUnicoCartao(d, banco, final) {
   return id;
 }
 
-export const usoCartao = (d, id) => d.compras_cartao.filter((k) => k.cartao === id).length;
+export const usoCartao = (d, id) => d.compras_cartao.filter((k) => k.cartao === id).length + d.recorrencias.filter((r) => r.cartao === id && r.ativa).length;
 /** Sem compras o cartão pode ser excluído; com compras só arquivado (o histórico continua). */
 export const remocaoCartao = (d, id) => ({ acao: usoCartao(d, id) ? 'arquivar' : 'excluir', compras: usoCartao(d, id) });
 
@@ -418,7 +474,7 @@ export function mesesDisponiveis(d, mesAtual) {
 export function itensDaLista(d) {
   const cartao = d.compras_cartao.map((k) => ({
     id: k.id, tipo: 'cartao', data: null, data_compra: k.data || null, mes: k.fatura, descricao: k.descricao, valor: k.valor,
-    categoria: k.categoria, conta: null, situacao: 'cartao', cartao_id: k.cartao || null,
+    categoria: k.categoria, conta: null, situacao: 'cartao', cartao_id: k.cartao || null, recorrencia: k.recorrencia || null,
   }));
   return [...d.lancamentos, ...cartao];
 }
@@ -459,6 +515,7 @@ export function validarLancamento(f) {
     if (f.destino_caixinha && f.destino_caixinha === f.origem_caixinha) return { erro: 'Origem e destino precisam ser diferentes.' };
   } else if (f.cartao && f.tipo === 'despesa') {
     if (!f.cartao_id && !f.legado) return { erro: 'Escolha o cartão.' };
+    if (!f.recorrente && f.parcelas !== undefined && f.parcelas !== null) { const p = validarParcelas(f.parcelas); if (p.erro) return p; if (f.parcelas > 1 && f.valor < f.parcelas) return { erro: 'O valor é pequeno demais para tantas parcelas.' }; }
   } else if (f.situacao === 'pago' && !f.conta && !f.cartao) {
     return { erro: 'Escolha a conta.' };
   }
@@ -695,6 +752,7 @@ export function migrar(d) {
   });
   out.emprestimo_movimentos = movs;
   if (!Array.isArray(out.cartoes)) out.cartoes = [];
+  if (!Array.isArray(out.recorrencias)) out.recorrencias = [];
 
   // honorários: cada linha antiga (uma parcela com cliente e valor do contrato) vira parcela de um contrato
   const contratos = [...(d.contratos || [])];

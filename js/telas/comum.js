@@ -38,6 +38,7 @@ export function linhaItem(l, n, { comData = false } = {}) {
     if (cat) partes.push(cat);
     const cartao = l.tipo === 'cartao' && l.cartao_id && n.cartao.get(l.cartao_id);
     if (cartao) partes.push(`${cartao.banco} ••${cartao.final}`);
+    if (l.tipo === 'cartao' && l.recorrencia) partes.push('Recorrente');
   }
   const cor = l.tipo === 'receita' ? 'verde' : l.tipo === 'transferencia' ? 'azul' : 'verm';
   const tag = tagDe(l);
