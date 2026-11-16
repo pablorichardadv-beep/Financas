@@ -6,7 +6,7 @@ import { abrirDetalhe } from './detalhe.js';
 
 // O filtro escolhido fica guardado enquanto o app estiver aberto.
 const filtro = { mes: null, sit: '', conta: '', cat: '' };
-const SITUACOES = [['', 'Todos'], ['receber', 'A receber'], ['pagar', 'A pagar']];
+const SITUACOES = [['', 'Todos'], ['receber', 'A receber'], ['pagar', 'A pagar'], ['recebidas', 'Recebidas'], ['pagas', 'Pagas']];
 
 /** Faz a lista abrir no mês indicado (usado depois de salvar um lançamento, para ele aparecer). */
 export const mostrarMesNaLista = (mes) => { filtro.mes = mes; };
@@ -85,10 +85,12 @@ export default function lancamentos(ctx) {
     <div class="dois-res">
       ${filtro.sit === 'receber' ? `<div><span class="rot">A receber</span><b class="verde">+ R$ ${num(entradas)}</b></div>`
         : filtro.sit === 'pagar' ? `<div><span class="rot">A pagar</span><b class="verm">− R$ ${num(saidas)}</b></div>`
+        : filtro.sit === 'recebidas' ? `<div><span class="rot">Recebidas</span><b class="verde">+ R$ ${num(entradas)}</b></div>`
+        : filtro.sit === 'pagas' ? `<div><span class="rot">Pagas</span><b class="verm">− R$ ${num(saidas)}</b></div>`
         : `<div><span class="rot">Entradas</span><b class="verde">+ R$ ${num(entradas)}</b></div>
       <div><span class="rot">Saídas</span><b class="verm">− R$ ${num(saidas)}</b></div>`}
     </div>
-    ${filtro.sit === 'pagar' ? '<p class="nota">Compras no cartão ficam de fora: elas só saem da conta quando você lança o pagamento da fatura.</p>' : ''}
+    ${['pagar', 'pagas'].includes(filtro.sit) ? '<p class="nota">Compras no cartão ficam de fora: elas só saem da conta quando você lança o pagamento da fatura.</p>' : ''}
     <div class="grupos">${blocos.length ? blocos.join('') : '<p class="vazio">Nada neste filtro.</p>'}</div>`;
 
   return {

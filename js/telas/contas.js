@@ -6,6 +6,9 @@ import { abrirEditorCaixinha } from './caixinhas.js';
 import { abrirEditorEmprestimo, nomeSentido } from './emprestimos.js';
 import { abrirEditorCartao } from './cartoes.js';
 
+// grupos do resumo que estão abertos (vale enquanto o app estiver aberto)
+const abertos = new Set();
+
 export default function contas(ctx) {
   const d = ctx.dados;
   const g = D.saldoGeral(d);
@@ -45,20 +48,33 @@ export default function contas(ctx) {
   const pf = ativas.filter((c) => c.tipo !== 'conta_pj');
   const pj = ativas.filter((c) => c.tipo === 'conta_pj');
 
+  // resumo: cada grupo mostra o total e, ao tocar, o saldo de cada conta dentro dele
+  const somaPf = pf.reduce((s, c) => s + (sc[c.id] || 0), 0);
+  const somaPj = pj.reduce((s, c) => s + (sc[c.id] || 0), 0);
+  const faturasAbertas = cartoesAtivos.reduce((s, c) => { const mes = D.faturaAtualDoCartao(d, c, hoje); return s + d.compras_cartao.filter((k) => k.cartao === c.id && k.fatura === mes).reduce((x, k) => x + k.valor, 0); }, 0);
+  const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  const grupos = [
+    { id: 'pf', titulo: 'Contas PF', sub: plural(pf.length, 'conta', 'contas'), total: somaPf, corpo: pf.length ? pf.map(linhaConta).join('') : '<p class="vazio">Nenhuma conta. Toque em “+ Nova conta”.</p>', acao: '<button class="link" data-nova-conta>+ Nova conta</button>' },
+    ...(pj.length ? [{ id: 'pj', titulo: 'Contas PJ', sub: plural(pj.length, 'conta', 'contas'), total: somaPj, corpo: pj.map(linhaConta).join(''), acao: '' }] : []),
+    { id: 'cx', titulo: 'Caixinhas', sub: plural(cxAtivas.length, 'caixinha', 'caixinhas'), total: g.caixinhas, corpo: cxAtivas.length ? cxAtivas.map(linhaCx).join('') : '<p class="vazio">Nenhuma caixinha. Toque em “+ Nova caixinha”.</p>', acao: '<button class="link" data-nova-cx>+ Nova caixinha</button>' },
+    { id: 'emp', titulo: 'Empréstimos', sub: plural(empAtivos.length, 'empréstimo', 'empréstimos'), total: g.emprestimo, corpo: empAtivos.length ? empAtivos.map(linhaEmp).join('') : '<p class="vazio">Nenhum empréstimo. Toque em “+ Novo empréstimo”.</p>', acao: '<button class="link" data-novo-emp>+ Novo empréstimo</button>' },
+    { id: 'cartao', titulo: 'Cartões de crédito', sub: `${plural(cartoesAtivos.length, 'cartão', 'cartões')} · faturas em aberto`, total: faturasAbertas, fora: true, corpo: cartoesAtivos.length ? cartoesAtivos.map(linhaCartao).join('') : '<p class="vazio">Nenhum cartão. Toque em “+ Novo cartão”.</p>', acao: '<button class="link" data-novo-cartao>+ Novo cartão</button>' },
+  ];
+  const todosAbertos = grupos.every((x) => abertos.has(x.id));
+  const grupoHtml = (x) => {
+    const aberto = abertos.has(x.id);
+    return `<div class="res-grupo" data-res="${x.id}">
+      <button class="res-cab" data-grupo="${x.id}" aria-expanded="${aberto}"><span class="t"><b>${x.titulo}</b><small>${esc(x.sub)}</small></span>
+        <b class="${x.fora || x.total < 0 ? 'verm' : ''}">${reais(x.total)}</b><span class="chev rot">›</span></button>
+      <div class="res-corpo" ${aberto ? '' : 'hidden'}><div class="lista">${x.corpo}</div><div class="res-acao">${x.acao}</div></div></div>`;
+  };
+
   const html = `
     <header class="topo"><h1 class="grande">Contas</h1><button class="btn-ic" data-nova-conta aria-label="Nova conta">${icone.mais()}</button></header>
-    <section class="saldo"><div><div class="eyebrow">SALDO GERAL</div><div class="valor">${reais(g.total)}</div></div></section>
-    <section class="card" style="gap:2px"><div class="linha-tit"><h2>Em contas</h2><b>${reais(pf.reduce((s, c) => s + (sc[c.id] || 0), 0))}</b></div>
-      <div class="lista">${pf.length ? pf.map(linhaConta).join('') : '<p class="vazio">Nenhuma conta. Toque no + para criar.</p>'}</div></section>
-    ${pj.length ? `<section class="card" style="gap:2px"><div class="linha-tit"><h2>Contas PJ</h2><b>${reais(pj.reduce((s, c) => s + (sc[c.id] || 0), 0))}</b></div>
-      <div class="lista">${pj.map(linhaConta).join('')}</div></section>` : ''}
-    <section class="card" style="gap:2px"><div class="linha-tit"><h2>Caixinhas</h2><span style="display:flex;align-items:center;gap:14px"><b>${reais(g.caixinhas)}</b><button class="link" data-nova-cx>+ Nova</button></span></div>
-      <div class="lista">${cxAtivas.length ? cxAtivas.map(linhaCx).join('') : '<p class="vazio">Nenhuma caixinha. Toque em “+ Nova” para criar.</p>'}</div></section>
-    <section class="card" style="gap:2px"><div class="linha-tit"><h2>Empréstimos</h2><span style="display:flex;align-items:center;gap:14px"><b class="${g.emprestimo < 0 ? 'verm' : ''}">${reais(g.emprestimo)}</b><button class="link" data-novo-emp>+ Novo</button></span></div>
-      <div class="lista">${empAtivos.length ? empAtivos.map(linhaEmp).join('') : '<p class="vazio">Nenhum empréstimo. Toque em “+ Novo” para criar.</p>'}</div></section>
-    <section class="card" style="gap:2px"><div class="linha-tit"><h2>Cartões de crédito</h2><button class="link" data-novo-cartao>+ Novo</button></div>
-      <div class="lista">${cartoesAtivos.length ? cartoesAtivos.map(linhaCartao).join('') : '<p class="vazio">Nenhum cartão. Toque em “+ Novo” para cadastrar.</p>'}</div>
-      ${cartoesAtivos.length ? '<p class="nota">O valor ao lado é o da fatura em aberto de cada cartão.</p>' : ''}</section>
+    <section class="saldo"><div><div class="eyebrow">RESUMO · SALDO GERAL</div><div class="valor">${reais(g.total)}</div></div>
+      <button class="claro" data-expandir>${todosAbertos ? 'Recolher tudo' : 'Ver o saldo de todas as contas'}</button></section>
+    <section class="card res-contas" style="gap:0">${grupos.map(grupoHtml).join('')}
+      <p class="nota">Cartões mostram a fatura em aberto e não entram no saldo geral. Toque em um grupo para ver o saldo de cada conta.</p></section>
     ${cartoesArq.length ? `<section class="card" style="gap:2px"><h2>Cartões arquivados</h2><div class="lista">${cartoesArq.map(linhaCartao).join('')}</div></section>` : ''}
     ${arquivadas.length ? `<section class="card" style="gap:2px"><h2>Contas arquivadas</h2><div class="lista">${arquivadas.map(linhaConta).join('')}</div></section>` : ''}
     ${arqOutros.length ? `<section class="card" style="gap:2px"><h2>Caixinhas e empréstimos arquivados</h2><div class="lista">${arqOutros.join('')}</div></section>` : ''}
@@ -68,10 +84,22 @@ export default function contas(ctx) {
   return {
     html,
     montar(raiz) {
-      raiz.querySelector('[data-nova-conta]').onclick = () => abrirEditorConta(ctx, null);
+      raiz.querySelectorAll('[data-nova-conta]').forEach((b) => (b.onclick = () => abrirEditorConta(ctx, null)));
       raiz.querySelector('[data-nova-cx]').onclick = () => abrirEditorCaixinha(ctx, null);
       raiz.querySelector('[data-novo-cartao]').onclick = () => abrirEditorCartao(ctx, null);
       raiz.querySelector('[data-novo-emp]').onclick = () => abrirEditorEmprestimo(ctx, null);
+      raiz.querySelectorAll('[data-grupo]').forEach((b) => (b.onclick = () => {
+        const id = b.dataset.grupo;
+        const abrir = !abertos.has(id);
+        abrir ? abertos.add(id) : abertos.delete(id);
+        b.setAttribute('aria-expanded', abrir);
+        raiz.querySelector(`[data-res="${id}"] .res-corpo`).hidden = !abrir;
+        raiz.querySelector('[data-expandir]').textContent = grupos.every((x) => abertos.has(x.id)) ? 'Recolher tudo' : 'Ver o saldo de todas as contas';
+      }));
+      raiz.querySelector('[data-expandir]').onclick = () => {
+        if (grupos.every((x) => abertos.has(x.id))) abertos.clear(); else grupos.forEach((x) => abertos.add(x.id));
+        ctx.recarregar();
+      };
       raiz.querySelectorAll('[data-conta]').forEach((b) => (b.onclick = () => abrirEditorConta(ctx, b.dataset.conta)));
     },
   };
