@@ -1,9 +1,14 @@
 // Novo lançamento / edição. Rota: #/novo  ou  #/novo/<id>
 import { esc, ligarCampoValor } from '../ui.js';
 import { abrirEditorCategoria } from './cadastros.js';
-import { num, hojeISO, dataRelativa, norm, novoId } from '../format.js';
+import { num, hojeISO, dataRelativa, dataBR, mesNome, norm, novoId } from '../format.js';
 import * as D from '../domain.js';
 import { mostrarMesNaLista } from './lancamentos.js';
+import { abrirEditorCartao } from './cartoes.js';
+
+// quem abre o formulário (ex.: a tela do cartão) pode deixá-lo preparado para o próximo lançamento
+let preparo = null;
+export const prepararNovo = (p) => { preparo = p; };
 
 const SIT = {
   despesa: [['pago', 'Paga'], ['aberto', 'A pagar'], ['atrasado', 'Atrasada'], ['guardar', 'Guardar']],
@@ -14,6 +19,8 @@ export default function novo(ctx, args) {
   const d = ctx.dados;
   const idEdicao = args[0] || null;
   const f = estadoInicial(d, idEdicao);
+  if (!idEdicao && preparo) { Object.assign(f, preparo); f.tipo = 'despesa'; f.situacao = 'pago'; preparo = null; }
+  if (f.cartao && !f.cartao_id && !f.legado) f.cartao_id = D.ultimoCartaoUsado(d);
   if (f.erroCarga) return { html: `<div class="fixo-form"><div class="form-topo"><a href="#/lancamentos">Voltar</a><h1>Lançamento</h1><span style="width:60px"></span></div><p class="vazio">${esc(f.mensagem || 'Lançamento não encontrado.')}</p></div>` };
   const memoria = D.memoriaDescricoes(d);
   let raiz;
@@ -26,6 +33,14 @@ export default function novo(ctx, args) {
   const destinoOpc = () =>
     D.contasAtivas(d, f.conta_destino).map((c) => `<option value="c:${esc(c.id)}" ${f.conta_destino === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('') +
     caixinhasAtivas(f.destino_caixinha).map((c) => `<option value="x:${esc(c.id)}" ${f.destino_caixinha === c.id ? 'selected' : ''}>Caixinha ${esc(D.rotuloCaixinha(c))}</option>`).join('');
+
+  function textoFatura() {
+    const c = d.cartoes.find((x) => x.id === f.cartao_id);
+    if (!c) return d.cartoes.length ? 'Escolha o cartão para ver em qual fatura a compra entra.' : 'Cadastre o cartão para a compra entrar na fatura certa.';
+    if (!f.data) return '';
+    const r = D.faturaDaCompra(c, f.data);
+    return `Entra na fatura de ${mesNome(r.fatura)} (fecha em ${dataBR(r.fechamento)}, vence em ${dataBR(r.vencimento)}).`;
+  }
 
   function html() {
     const t = f.tipo;
@@ -52,12 +67,17 @@ export default function novo(ctx, args) {
       corpo.push(`<div class="${mostrarConta ? 'dois' : ''}">
         ${mostrarConta ? `<div class="campo sel"><label for="conta">${aberto ? 'Conta (opcional)' : t === 'despesa' ? 'Saiu da conta' : 'Entrou na conta'}</label><select id="conta">${contasOpc(f.conta, aberto ? 'Definir depois' : '')}</select></div>` : ''}
         <div class="campo"><label for="data">${aberto ? 'Vencimento' : f.cartao ? 'Data da compra' : 'Data'}</label><input id="data" type="date" value="${esc(f.data)}"></div></div>`);
-      corpo.push(`<div class="campo" style="gap:10px;padding-bottom:14px"><span class="rot">Categoria</span><div class="chips" role="group" aria-label="Categoria">${cats.map((c) => `<button class="chip ${f.categoria === c.id ? 'on' : ''}" data-cat="${esc(c.id)}" aria-pressed="${f.categoria === c.id}">${esc(c.nome)}</button>`).join('')}<button class="chip add" data-nova-cat aria-label="Criar nova categoria">+ Nova</button></div></div>`);
+      corpo.push(`<div class="campo" style="gap:10px;padding-bottom:14px"><span class="rot">${t === 'despesa' ? 'Tipo de despesa' : 'Categoria'}</span><div class="chips" role="group" aria-label="Categoria">${cats.map((c) => `<button class="chip ${f.categoria === c.id ? 'on' : ''}" data-cat="${esc(c.id)}" aria-pressed="${f.categoria === c.id}">${esc(c.nome)}</button>`).join('')}<button class="chip add" data-nova-cat aria-label="Criar nova categoria">+ Nova</button></div></div>`);
       if (!f.cartao && sits.length) {
         corpo.push(`<div class="campo" style="gap:10px;padding-bottom:12px"><span class="rot">Situação</span><div class="seg peq" role="group" aria-label="Situação">${sits.map(([v, r]) => `<button data-sit="${v}" class="${f.situacao === v ? 'on s-' + v : ''}" aria-pressed="${f.situacao === v}">${r}</button>`).join('')}</div></div>`);
       }
       if (t === 'despesa') {
-        corpo.push(`<div class="campo"><div class="chave"><span>Foi no cartão de crédito</span><button data-cartao class="${f.cartao ? 'on' : ''}" role="switch" aria-checked="${f.cartao}" aria-label="Compra no cartão de crédito"></button></div>${f.cartao ? '<p class="nota" style="margin:-4px 0 4px">Entra na fatura do mês e só sai da conta quando você lançar o pagamento da fatura.</p>' : ''}</div>`);
+        corpo.push(`<div class="campo"><div class="chave"><span>Foi no cartão de crédito</span><button data-cartao class="${f.cartao ? 'on' : ''}" role="switch" aria-checked="${f.cartao}" aria-label="Compra no cartão de crédito"></button></div>${f.cartao ? '<p class="nota" style="margin:-4px 0 4px">Entra na fatura do cartão e só sai da conta quando você lançar o pagamento da fatura.</p>' : ''}</div>`);
+        if (f.cartao) {
+          const cs = D.cartoesAtivos(d, f.cartao_id);
+          corpo.push(`<div class="campo sel"><label for="cartao">Cartão</label><select id="cartao"><option value="">${f.legado ? 'Sem cartão (compra antiga)' : 'Escolher…'}</option>${cs.map((c) => `<option value="${esc(c.id)}" ${c.id === f.cartao_id ? 'selected' : ''}>${esc(D.rotuloCartao(c))}</option>`).join('')}</select></div>
+            <button class="link" data-novo-cartao style="align-self:flex-start">+ Cadastrar cartão</button><p class="nota" id="fatura" aria-live="polite">${esc(textoFatura())}</p>`);
+        }
       }
     }
 
@@ -103,9 +123,13 @@ export default function novo(ctx, args) {
     const eraCartao = idEdicao?.startsWith('k');
     const base = idEdicao || null;
 
+    let mesLista = dados.data.slice(0, 7);
     if (dados.cartao && dados.tipo === 'despesa') {
       const id = eraCartao ? base : novoId('k');
-      ops.push(['put', 'compras_cartao', { id, fatura: dados.data.slice(0, 7), data: dados.data, descricao: dados.descricao.trim(), valor: dados.valor, categoria: dados.categoria || null }]);
+      const c = d.cartoes.find((x) => x.id === dados.cartao_id);
+      const fatura = c ? D.faturaDaCompra(c, dados.data).fatura : dados.legadoFatura || dados.data.slice(0, 7);
+      mesLista = fatura;
+      ops.push(['put', 'compras_cartao', { id, cartao: c ? c.id : null, fatura, data: dados.data, descricao: dados.descricao.trim(), valor: dados.valor, categoria: dados.categoria || null }]);
       if (base && !eraCartao) ops.push(['del', 'lancamentos', base]);
     } else if (dados.tipo === 'transferencia') {
       const idL = base && !eraCartao ? base : null;
@@ -131,7 +155,7 @@ export default function novo(ctx, args) {
     try {
       await ctx.gravar(ops.filter(Boolean));
       ctx.aviso(idEdicao ? 'Alterações salvas' : 'Lançamento salvo');
-      mostrarMesNaLista(dados.data.slice(0, 7));
+      mostrarMesNaLista(mesLista);
       ctx.ir('lancamentos');
     } catch (e) {
       msg.textContent = 'Não foi possível salvar: ' + e;
@@ -153,7 +177,9 @@ export default function novo(ctx, args) {
     }));
     raiz.querySelectorAll('[data-cat]').forEach((b) => (b.onclick = () => { f.categoria = f.categoria === b.dataset.cat ? null : b.dataset.cat; f.catManual = true; redesenhar(); }));
     raiz.querySelectorAll('[data-sit]').forEach((b) => (b.onclick = () => { f.situacao = b.dataset.sit; redesenhar(); }));
-    q('[data-cartao]')?.addEventListener('click', () => { f.cartao = !f.cartao; if (f.cartao) f.situacao = 'pago'; redesenhar(); });
+    q('[data-cartao]')?.addEventListener('click', () => { f.cartao = !f.cartao; if (f.cartao) { f.situacao = 'pago'; f.cartao_id ||= D.ultimoCartaoUsado(d); } redesenhar(); });
+    q('#cartao')?.addEventListener('change', (e) => { f.cartao_id = e.target.value || null; q('#fatura').textContent = textoFatura(); });
+    q('[data-novo-cartao]')?.addEventListener('click', () => abrirEditorCartao(ctx, null, { semRender: true, aoSalvar: (id) => { f.cartao_id = id; redesenhar(); } }));
 
     ligarCampoValor(q('#valor'), f.valor, (v) => { f.valor = v; });
     q('[data-nova-cat]')?.addEventListener('click', () => abrirEditorCategoria(ctx, null, {
@@ -163,7 +189,7 @@ export default function novo(ctx, args) {
 
     q('#desc')?.addEventListener('input', (e) => { f.descricao = e.target.value; });
     q('#desc')?.addEventListener('change', () => { aplicarMemoria(); });
-    q('#data')?.addEventListener('change', (e) => { f.data = e.target.value; });
+    q('#data')?.addEventListener('change', (e) => { f.data = e.target.value; const t = q('#fatura'); if (t) t.textContent = textoFatura(); });
     q('#conta')?.addEventListener('change', (e) => { f.conta = e.target.value; f.contaManual = true; });
     q('#orig')?.addEventListener('change', (e) => {
       const v = e.target.value;
@@ -191,14 +217,14 @@ export default function novo(ctx, args) {
 function estadoInicial(d, id) {
   const base = {
     tipo: 'despesa', valor: 0, descricao: '', data: hojeISO(), conta: D.ultimaContaUsada(d, 'despesa') || D.contasAtivas(d)[0]?.id || '', conta_origem: null,
-    conta_destino: null, destino_caixinha: null, origem_caixinha: null, categoria: null, situacao: 'pago', cartao: false, catManual: false, contaManual: false,
+    conta_destino: null, destino_caixinha: null, origem_caixinha: null, categoria: null, situacao: 'pago', cartao: false, cartao_id: null, legado: false, legadoFatura: null, catManual: false, contaManual: false,
   };
   base.conta_origem = base.conta;
   if (!id) return base;
   if (id.startsWith('k')) {
     const k = d.compras_cartao.find((x) => x.id === id);
     if (!k) return { erroCarga: true };
-    return { ...base, tipo: 'despesa', valor: k.valor, descricao: k.descricao, data: k.data || `${k.fatura}-01`, categoria: k.categoria, cartao: true, catManual: true, contaManual: true };
+    return { ...base, tipo: 'despesa', valor: k.valor, descricao: k.descricao, data: k.data || `${k.fatura}-01`, categoria: k.categoria, cartao: true, cartao_id: k.cartao || null, legado: !k.cartao, legadoFatura: k.fatura, catManual: true, contaManual: true };
   }
   const l = d.lancamentos.find((x) => x.id === id);
   if (!l) return { erroCarga: true };

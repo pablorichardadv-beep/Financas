@@ -12,11 +12,12 @@ import categorias from './telas/categorias.js';
 import caixinha from './telas/caixinhas.js';
 import emprestimo from './telas/emprestimos.js';
 import honorario from './telas/contrato.js';
+import cartao from './telas/cartoes.js';
 import * as D from './domain.js';
 
-const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo, honorario };
+const ROTAS = { '': inicio, lancamentos, novo, mes, contas, honorarios, ajustes, categorias, caixinha, emprestimo, honorario, cartao };
 // telas que pertencem a "Contas" (o botão da barra inferior continua marcado)
-const DENTRO_DE_CONTAS = ['caixinha', 'emprestimo', 'honorarios', 'honorario'];
+const DENTRO_DE_CONTAS = ['caixinha', 'emprestimo', 'honorarios', 'honorario', 'cartao'];
 const raiz = document.getElementById('app');
 
 export const ctx = {

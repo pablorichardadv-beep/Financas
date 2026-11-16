@@ -1,5 +1,5 @@
 // Regras e cálculos do controle financeiro. Funções puras: recebem os dados (d) e devolvem números/listas.
-// d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios (parcelas), contratos }
+// d = { contas, categorias, lancamentos, compras_cartao, caixinhas, caixinha_movimentos, emprestimos, emprestimo_movimentos, honorarios (parcelas), contratos, cartoes }
 // Todos os valores em CENTAVOS.
 
 import { norm, novoId } from './format.js';
@@ -313,6 +313,99 @@ export function opsAoExcluirLancamento(d, l) {
   return [['put', 'honorarios', { ...resto, status: 'aberto' }]];
 }
 
+// ---------- cartões de crédito ----------
+// cartão = { id, banco, bandeira, final (4 dígitos), vencimento (dia do mês), fechamento (dia do mês), arquivado? }
+// compra = { id, cartao, fatura ('AAAA-MM' do mês de vencimento), data, descricao, valor, categoria }
+export const BANDEIRAS = ['Visa', 'Mastercard', 'Elo', 'American Express', 'Hipercard', 'Outra'];
+
+/** Dia de fechamento sugerido: 7 dias antes do vencimento (o mais comum). */
+export const fechamentoSugerido = (vencimento) => (vencimento > 7 ? vencimento - 7 : vencimento + 23);
+
+export const rotuloCartao = (c) => `${c.banco} ${c.bandeira} final ${c.final}`;
+export const cartoesAtivos = (d, manterId = null) => d.cartoes.filter((c) => !c.arquivado || c.id === manterId);
+
+const diaNoMes = (ano, mes1) => new Date(ano, mes1, 0).getDate();
+const isoDia = (ano, mes1, dia) => `${ano}-${String(mes1).padStart(2, '0')}-${String(Math.min(dia, diaNoMes(ano, mes1))).padStart(2, '0')}`;
+const addMes = (ano, mes1, k) => { const t = ano * 12 + (mes1 - 1) + k; return [Math.floor(t / 12), (t % 12) + 1]; };
+
+/** Data de vencimento da fatura do mês `fatura` ('AAAA-MM') e a data em que ela fecha. */
+export function datasDaFatura(c, fatura) {
+  const [a, m] = fatura.split('-').map(Number);
+  const [ac, mc] = c.vencimento > c.fechamento ? [a, m] : addMes(a, m, -1);
+  return { vencimento: isoDia(a, m, c.vencimento), fechamento: isoDia(ac, mc, c.fechamento) };
+}
+
+/** Em qual fatura entra uma compra feita em `dataISO`: depois do dia de fechamento vai para a fatura seguinte. */
+export function faturaDaCompra(c, dataISO) {
+  const [a, m, dia] = dataISO.split('-').map(Number);
+  const fecha = Math.min(c.fechamento, diaNoMes(a, m));
+  const [ac, mc] = dia > fecha ? addMes(a, m, 1) : [a, m];
+  const [av, mv] = c.vencimento > c.fechamento ? [ac, mc] : addMes(ac, mc, 1);
+  const fatura = `${av}-${String(mv).padStart(2, '0')}`;
+  return { fatura, ...datasDaFatura(c, fatura) };
+}
+
+export function validarCartao(d, { id = null, banco, bandeira, final, vencimento, fechamento }) {
+  const b = String(banco || '').trim().replace(/\s+/g, ' ');
+  const fim = String(final || '').trim();
+  if (!b) return { erro: 'Informe o banco.' };
+  if (b.length > 30) return { erro: 'Use no máximo 30 letras no nome do banco.' };
+  if (!BANDEIRAS.includes(bandeira)) return { erro: 'Escolha a bandeira.' };
+  if (!/^\d{4}$/.test(fim)) return { erro: 'Informe os 4 últimos dígitos do cartão.' };
+  const dia = (x) => Number.isInteger(x) && x >= 1 && x <= 31;
+  if (!dia(vencimento)) return { erro: 'Informe o dia do vencimento (de 1 a 31).' };
+  if (!dia(fechamento)) return { erro: 'Informe o dia do fechamento da fatura (de 1 a 31).' };
+  if (d.cartoes.some((c) => c.id !== id && norm(c.banco) === norm(b) && c.bandeira === bandeira && c.final === fim)) return { erro: 'Esse cartão já está cadastrado.' };
+  return { ok: { banco: b, bandeira, final: fim, vencimento, fechamento } };
+}
+
+export function idUnicoCartao(d, banco, final) {
+  const base = `cartao_${slug(banco)}_${final}`;
+  let id = base, i = 2;
+  while (d.cartoes.some((c) => c.id === id)) id = `${base}_${i++}`;
+  return id;
+}
+
+export const usoCartao = (d, id) => d.compras_cartao.filter((k) => k.cartao === id).length;
+/** Sem compras o cartão pode ser excluído; com compras só arquivado (o histórico continua). */
+export const remocaoCartao = (d, id) => ({ acao: usoCartao(d, id) ? 'arquivar' : 'excluir', compras: usoCartao(d, id) });
+
+/** Faturas de um cartão (uma por mês de vencimento), da mais recente para a mais antiga. */
+export function faturasDoCartao(d, c) {
+  const por = new Map();
+  for (const k of d.compras_cartao.filter((x) => x.cartao === c.id)) {
+    if (!por.has(k.fatura)) por.set(k.fatura, []);
+    por.get(k.fatura).push(k);
+  }
+  return [...por.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([mes, compras]) => ({
+    mes, compras: compras.sort((a, b) => (b.data || '').localeCompare(a.data || '')), total: soma(compras.map((k) => k.valor)), ...datasDaFatura(c, mes),
+  }));
+}
+
+/** Fatura que está valendo agora: a primeira com vencimento a partir de hoje (se não houver, a do mês de hoje). */
+export function faturaAtualDoCartao(d, c, hoje) {
+  const fs = faturasDoCartao(d, c).filter((f) => f.vencimento >= hoje).sort((a, b) => a.mes.localeCompare(b.mes));
+  return fs[0]?.mes || faturaDaCompra(c, hoje).fatura;
+}
+
+/** Faturas de um mês de vencimento: uma linha por cartão e, se houver, uma de compras antigas sem cartão. */
+export function faturasDoMes(d, mes) {
+  const linhas = [];
+  for (const c of d.cartoes) {
+    const compras = d.compras_cartao.filter((k) => k.cartao === c.id && k.fatura === mes);
+    if (compras.length) linhas.push({ cartao: c, total: soma(compras.map((k) => k.valor)), vencimento: datasDaFatura(c, mes).vencimento });
+  }
+  const sem = d.compras_cartao.filter((k) => !k.cartao && k.fatura === mes);
+  if (sem.length) linhas.push({ cartao: null, total: soma(sem.map((k) => k.valor)), vencimento: null });
+  return linhas;
+}
+
+/** Último cartão usado numa compra (para sugerir no formulário). */
+export const ultimoCartaoUsado = (d) => {
+  const k = [...d.compras_cartao].reverse().find((x) => x.cartao && d.cartoes.some((c) => c.id === x.cartao && !c.arquivado));
+  return k?.cartao || cartoesAtivos(d)[0]?.id || '';
+};
+
 // ---------- listas e apoio ao formulário ----------
 export function mesesDisponiveis(d, mesAtual) {
   const set = new Set([mesAtual]);
@@ -324,8 +417,8 @@ export function mesesDisponiveis(d, mesAtual) {
 /** Lançamentos + compras no cartão numa lista única (cartão aparece com tipo "cartao"). */
 export function itensDaLista(d) {
   const cartao = d.compras_cartao.map((k) => ({
-    id: k.id, tipo: 'cartao', data: null, mes: k.fatura, descricao: k.descricao, valor: k.valor,
-    categoria: k.categoria, conta: null, situacao: 'cartao',
+    id: k.id, tipo: 'cartao', data: null, data_compra: k.data || null, mes: k.fatura, descricao: k.descricao, valor: k.valor,
+    categoria: k.categoria, conta: null, situacao: 'cartao', cartao_id: k.cartao || null,
   }));
   return [...d.lancamentos, ...cartao];
 }
@@ -364,6 +457,8 @@ export function validarLancamento(f) {
     if (!f.conta_destino && !f.destino_caixinha) return { erro: 'Escolha o destino.' };
     if (f.conta_destino && f.conta_destino === f.conta_origem) return { erro: 'Origem e destino precisam ser diferentes.' };
     if (f.destino_caixinha && f.destino_caixinha === f.origem_caixinha) return { erro: 'Origem e destino precisam ser diferentes.' };
+  } else if (f.cartao && f.tipo === 'despesa') {
+    if (!f.cartao_id && !f.legado) return { erro: 'Escolha o cartão.' };
   } else if (f.situacao === 'pago' && !f.conta && !f.cartao) {
     return { erro: 'Escolha a conta.' };
   }
@@ -599,6 +694,7 @@ export function migrar(d) {
     return { sentido: 'dado', ...resto };
   });
   out.emprestimo_movimentos = movs;
+  if (!Array.isArray(out.cartoes)) out.cartoes = [];
 
   // honorários: cada linha antiga (uma parcela com cliente e valor do contrato) vira parcela de um contrato
   const contratos = [...(d.contratos || [])];

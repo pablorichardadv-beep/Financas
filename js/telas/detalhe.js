@@ -1,6 +1,7 @@
 // Folha de detalhes de um lançamento: marcar como paga, editar, excluir.
 import { esc, folha, confirmar } from '../ui.js';
-import { reais, dataBR, hojeISO } from '../format.js';
+import { reais, dataBR, hojeISO, mesNome } from '../format.js';
+import * as D from '../domain.js';
 import { estaPago, estaAberto, contasAtivas, ligadaAEmprestimo, ligadaAHonorario, opsAoExcluirLancamento } from '../domain.js';
 import { nomes, origemTransf, destinoTransf, tituloItem } from './comum.js';
 
@@ -27,7 +28,13 @@ export function abrirDetalhe(ctx, id) {
     linhas.push([l.tipo === 'receita' ? 'Entrou em' : 'Saiu de', l.conta ? n.conta.get(l.conta)?.nome : 'Ainda não definida']);
   }
   if (l.categoria) linhas.push(['Categoria', n.cat.get(l.categoria)?.nome || '—']);
-  if (l.tipo === 'cartao') linhas.push(['Fatura', l.mes]);
+  if (l.tipo === 'cartao') {
+    const c = d.cartoes.find((x) => x.id === l.cartao);
+    const dc = linhas.find((x) => x[0] === 'Data');
+    if (dc) dc[0] = 'Data da compra';
+    linhas.unshift(['Cartão', c ? D.rotuloCartao(c) : 'Sem cartão (compra antiga)']);
+    linhas.push(['Fatura', c ? `${mesNome(l.mes)} · vence em ${dataBR(D.datasDaFatura(c, l.mes).vencimento)}` : mesNome(l.mes)]);
+  }
   if (l.tipo !== 'transferencia') linhas.push(['Situação', SITUACAO[l.situacao] || l.situacao]);
   const doEmprestimo = l.tipo === 'transferencia' && ligadaAEmprestimo(l);
   const doHonorario = ligadaAHonorario(l);

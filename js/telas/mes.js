@@ -1,5 +1,5 @@
 import { esc } from '../ui.js';
-import { num, reais, mesAtual, mesNome } from '../format.js';
+import { num, reais, mesAtual, mesNome, dataBR } from '../format.js';
 import * as D from '../domain.js';
 
 let mesEscolhido = null;
@@ -12,6 +12,7 @@ export default function mes(ctx) {
   const r = D.resumoMes(d, mesEscolhido);
   const cats = D.despesasPorCategoria(d, mesEscolhido);
   const fatura = D.faturaCartao(d, mesEscolhido);
+  const faturas = D.faturasDoMes(d, mesEscolhido);
   const maior = cats[0]?.valor || 1;
 
   const html = `
@@ -30,7 +31,10 @@ export default function mes(ctx) {
       <div>${cats.length ? cats.map((c) => `<div class="cat-linha"><div class="r"><span>${esc(c.nome)}</span><span>${reais(c.valor)}</span></div>
         <div class="b"><i style="width:${Math.max(2, Math.round((c.valor / maior) * 100))}%"></i></div><small>${(c.pct * 100).toFixed(1).replace('.', ',')}% das despesas</small></div>`).join('') : '<p class="vazio">Sem despesas neste mês.</p>'}</div>
     </section>
-    ${fatura ? `<section class="card" aria-label="Cartão de crédito"><div class="linha-tit"><h2>Fatura do cartão</h2><b class="verm">${reais(fatura)}</b></div>
+    ${fatura ? `<section class="card" aria-label="Cartão de crédito"><div class="linha-tit"><h2>Faturas dos cartões</h2><b class="verm">${reais(fatura)}</b></div>
+      ${faturas.length > 1 || faturas[0]?.cartao ? `<div class="lista">${faturas.map((x) => x.cartao
+        ? `<a class="item" href="#/cartao/${esc(x.cartao.id)}"><span class="t"><b>${esc(x.cartao.banco)} · final ${esc(x.cartao.final)}</b><small>vence em ${dataBR(x.vencimento)}</small></span><span class="v verm">${reais(x.total)} <span class="rot">›</span></span></a>`
+        : `<div class="item"><span class="t"><b>Compras sem cartão</b><small>lançadas antes do cadastro dos cartões</small></span><span class="v verm">${reais(x.total)}</span></div>`).join('')}</div>` : ''}
       <p class="nota">Compras no cartão ficam fora das despesas acima. Elas saem da conta quando você lança o pagamento da fatura (ex.: “Cartão Nubank”).</p></section>` : ''}
     <a class="link" href="#/categorias" style="justify-content:center">Gerenciar categorias ›</a>
     <p class="nota" style="text-align:center">Metas por categoria (Ideal %) entram na próxima etapa.</p>`;

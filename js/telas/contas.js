@@ -1,9 +1,10 @@
 import { esc, icone } from '../ui.js';
-import { reais, dataBR } from '../format.js';
+import { reais, dataBR, hojeISO } from '../format.js';
 import * as D from '../domain.js';
 import { abrirEditorConta, nomeTipoConta } from './cadastros.js';
 import { abrirEditorCaixinha } from './caixinhas.js';
 import { abrirEditorEmprestimo, nomeSentido } from './emprestimos.js';
+import { abrirEditorCartao } from './cartoes.js';
 
 export default function contas(ctx) {
   const d = ctx.dados;
@@ -30,6 +31,17 @@ export default function contas(ctx) {
   const empAtivos = d.emprestimos.filter((e) => !e.arquivada);
   const arqOutros = [...d.caixinhas.filter((c) => c.arquivada).sort(ordemCx).map(linhaCx), ...d.emprestimos.filter((e) => e.arquivada).map(linhaEmp)];
 
+  const hoje = hojeISO();
+  const ordemCartao = (a, b) => a.banco.localeCompare(b.banco, 'pt-BR') || a.final.localeCompare(b.final);
+  const linhaCartao = (c) => {
+    const mes = D.faturaAtualDoCartao(d, c, hoje);
+    const total = d.compras_cartao.filter((k) => k.cartao === c.id && k.fatura === mes).reduce((s, k) => s + k.valor, 0);
+    return `<a class="item" href="#/cartao/${esc(c.id)}"><span class="t"><b>${esc(c.banco)} · ${esc(c.bandeira)}</b><small>final ${esc(c.final)} · vence dia ${c.vencimento}${c.arquivado ? ' · arquivado' : ''}</small></span>
+      <span class="v">${reais(total)} <span class="rot">›</span></span></a>`;
+  };
+  const cartoesAtivos = d.cartoes.filter((c) => !c.arquivado).sort(ordemCartao);
+  const cartoesArq = d.cartoes.filter((c) => c.arquivado).sort(ordemCartao);
+
   const pf = ativas.filter((c) => c.tipo !== 'conta_pj');
   const pj = ativas.filter((c) => c.tipo === 'conta_pj');
 
@@ -44,6 +56,10 @@ export default function contas(ctx) {
       <div class="lista">${cxAtivas.length ? cxAtivas.map(linhaCx).join('') : '<p class="vazio">Nenhuma caixinha. Toque em “+ Nova” para criar.</p>'}</div></section>
     <section class="card" style="gap:2px"><div class="linha-tit"><h2>Empréstimos</h2><span style="display:flex;align-items:center;gap:14px"><b class="${g.emprestimo < 0 ? 'verm' : ''}">${reais(g.emprestimo)}</b><button class="link" data-novo-emp>+ Novo</button></span></div>
       <div class="lista">${empAtivos.length ? empAtivos.map(linhaEmp).join('') : '<p class="vazio">Nenhum empréstimo. Toque em “+ Novo” para criar.</p>'}</div></section>
+    <section class="card" style="gap:2px"><div class="linha-tit"><h2>Cartões de crédito</h2><button class="link" data-novo-cartao>+ Novo</button></div>
+      <div class="lista">${cartoesAtivos.length ? cartoesAtivos.map(linhaCartao).join('') : '<p class="vazio">Nenhum cartão. Toque em “+ Novo” para cadastrar.</p>'}</div>
+      ${cartoesAtivos.length ? '<p class="nota">O valor ao lado é o da fatura em aberto de cada cartão.</p>' : ''}</section>
+    ${cartoesArq.length ? `<section class="card" style="gap:2px"><h2>Cartões arquivados</h2><div class="lista">${cartoesArq.map(linhaCartao).join('')}</div></section>` : ''}
     ${arquivadas.length ? `<section class="card" style="gap:2px"><h2>Contas arquivadas</h2><div class="lista">${arquivadas.map(linhaConta).join('')}</div></section>` : ''}
     ${arqOutros.length ? `<section class="card" style="gap:2px"><h2>Caixinhas e empréstimos arquivados</h2><div class="lista">${arqOutros.join('')}</div></section>` : ''}
     <a class="card" href="#/honorarios"><div class="linha-tit"><h2>Honorários a receber</h2><span class="link">Ver ›</span></div></a>
@@ -54,6 +70,7 @@ export default function contas(ctx) {
     montar(raiz) {
       raiz.querySelector('[data-nova-conta]').onclick = () => abrirEditorConta(ctx, null);
       raiz.querySelector('[data-nova-cx]').onclick = () => abrirEditorCaixinha(ctx, null);
+      raiz.querySelector('[data-novo-cartao]').onclick = () => abrirEditorCartao(ctx, null);
       raiz.querySelector('[data-novo-emp]').onclick = () => abrirEditorEmprestimo(ctx, null);
       raiz.querySelectorAll('[data-conta]').forEach((b) => (b.onclick = () => abrirEditorConta(ctx, b.dataset.conta)));
     },

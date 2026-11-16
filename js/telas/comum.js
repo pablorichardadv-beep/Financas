@@ -4,7 +4,7 @@ import { comSinal, dataCurta, dataBR, reais, num } from '../format.js';
 import * as D from '../domain.js';
 
 const mapa = (arr) => new Map(arr.map((x) => [x.id, x]));
-export const nomes = (d) => ({ conta: mapa(d.contas), cat: mapa(d.categorias), cx: mapa(d.caixinhas), emp: mapa(d.emprestimos) });
+export const nomes = (d) => ({ conta: mapa(d.contas), cat: mapa(d.categorias), cx: mapa(d.caixinhas), emp: mapa(d.emprestimos), cartao: mapa(d.cartoes) });
 
 /** Nome de uma ponta da transferência (conta, caixinha ou empréstimo). lado: 'origem' | 'destino'. */
 export function nomePonta(l, lado, n) {
@@ -31,11 +31,13 @@ function tagDe(l) {
 /** Linha de lançamento usada nas listas. */
 export function linhaItem(l, n, { comData = false } = {}) {
   const partes = [];
-  if (comData && l.data) partes.push(dataCurta(l.data));
+  if (comData && (l.data || l.data_compra)) partes.push(dataCurta(l.data || l.data_compra));
   if (l.tipo === 'transferencia') partes.push(`${origemTransf(l, n)} → ${destinoTransf(l, n)}`);
   else {
     const cat = l.categoria && n.cat.get(l.categoria)?.nome;
     if (cat) partes.push(cat);
+    const cartao = l.tipo === 'cartao' && l.cartao_id && n.cartao.get(l.cartao_id);
+    if (cartao) partes.push(`${cartao.banco} ••${cartao.final}`);
   }
   const cor = l.tipo === 'receita' ? 'verde' : l.tipo === 'transferencia' ? 'azul' : 'verm';
   const tag = tagDe(l);
