@@ -56,8 +56,8 @@ export function barrasMeses(serie) {
 
 // ---------- ajuda: botão "?" que explica o número ----------
 export const AJUDAS = {
-  saldoGeral: ['Saldo geral', 'Soma de tudo o que é seu hoje: saldo das contas, caixinhas e empréstimos a receber, mais o “Em aberto” (o que ainda vai entrar menos o que ainda vai sair, incluindo a fatura do cartão que vence até o fim do mês). Transferências entre suas contas não mudam o total.'],
-  emAberto: ['Em aberto', 'É o que ainda não aconteceu: lançamentos “a receber” menos os “a pagar”, mais as faturas de cartão que vencem até o fim deste mês. Quando você recebe, paga ou quita a fatura, o valor sai daqui e entra no saldo da conta.'],
+  saldoGeral: ['Saldo geral', 'É o dinheiro com que você pode contar: saldo das contas, mais as caixinhas, mais os empréstimos a receber. O “Em aberto” (a receber e a pagar) aparece ao lado, mas não entra nesta soma, porque ainda não aconteceu. Transferências entre suas contas não mudam o total.'],
+  emAberto: ['Em aberto', 'É o que ainda não aconteceu: lançamentos “a receber” menos os “a pagar”, mais as faturas de cartão que vencem até o fim deste mês. Não entra no saldo geral. Quando você recebe, paga ou quita a fatura, o valor sai daqui e entra no saldo da conta.'],
   previstas: ['Previstas × Efetuado', 'Previsto é o que ainda vai entrar ou sair (lançamentos “a receber” e “a pagar”, mais a fatura do cartão não paga). Efetuado é o que já aconteceu: recebido menos pago. Total é a soma dos dois.'],
   fatura: ['Fatura do cartão', 'As compras entram na fatura pelo dia de fechamento: compras até o dia de fechamento vão para a fatura que vence neste ciclo; as seguintes vão para a próxima. O valor só sai da conta quando você toca em “Pagar fatura”.'],
   contas: ['Resumo das contas', 'Cada grupo mostra o total. Toque nele para ver o saldo de cada conta, caixinha, empréstimo ou cartão. Cartões mostram o que falta pagar da fatura em aberto.'],

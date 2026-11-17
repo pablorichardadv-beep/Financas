@@ -1,5 +1,5 @@
 import { esc } from '../ui.js';
-import { reais, mesAtual, mesNome, dataBR } from '../format.js';
+import { reais, mesAtual, mesNome, mesLongo, dataBR } from '../format.js';
 import * as D from '../domain.js';
 import { badgeCat, corCat, rosca, barrasMeses, ajuda, ligarAjudas } from '../visual.js';
 
@@ -8,9 +8,23 @@ const cor = (v) => (v < 0 ? 'verm' : 'verde');
 
 export default function mes(ctx) {
   const d = ctx.dados;
-  const meses = D.mesesDisponiveis(d, mesAtual());
   mesEscolhido ||= mesAtual();
-  if (!meses.includes(mesEscolhido)) mesEscolhido = meses[0];
+  const anoAtual = Number(mesAtual().slice(0, 4));
+  const anos = [...new Set([...D.mesesDisponiveis(d, mesAtual()).map((m) => Number(m.slice(0, 4))), anoAtual, anoAtual + 1])].sort((a, b) => b - a);
+  const ano = mesEscolhido.slice(0, 4);
+  const meses = Array.from({ length: 12 }, (_, k) => `${ano}-${String(k + 1).padStart(2, '0')}`);
+  const soMes = (m) => mesLongo(m).split(' de ')[0];
+  const recs = D.receitasPorCategoria(d, mesEscolhido);
+  const cartaoCategorias = (titulo, lista, rotuloPct, vazio) => {
+    const fat = lista.filter((c) => c.valor > 0).map((c) => ({ valor: c.valor, cor: corCat(catPorId.get(c.id)) }));
+    const tot = lista.reduce((s, c) => s + c.valor, 0), mx = lista[0]?.valor || 1;
+    return `<section class="card" aria-label="${titulo}">
+      <h2>${titulo}</h2>
+      ${fat.length ? `<div class="rosca-wrap">${rosca(fat, reais(tot).replace('R$ ', ''), titulo)}<div class="rosca-leg">${lista.slice(0, 5).map((c) => `<span><i style="background:${corCat(catPorId.get(c.id))}"></i>${esc(c.nome)}</span>`).join('')}${lista.length > 5 ? `<span class="rot">+ ${lista.length - 5} categorias</span>` : ''}</div></div>` : ''}
+      <div>${lista.length ? lista.map((c) => `<div class="cat-linha"><div class="r"><span class="cnome">${badgeCat(catPorId.get(c.id))}${esc(c.nome)}</span><span>${reais(c.valor)}</span></div>
+        <div class="b"><i style="width:${Math.max(2, Math.round((c.valor / mx) * 100))}%;background:${corCat(catPorId.get(c.id))}"></i></div><small>${(c.pct * 100).toFixed(1).replace('.', ',')}% ${rotuloPct}</small></div>`).join('') : `<p class="vazio">${vazio}</p>`}</div>
+    </section>`;
+  };
   const r = D.resumoMes(d, mesEscolhido);
   const cats = D.despesasPorCategoria(d, mesEscolhido);
   const fatura = D.faturaCartao(d, mesEscolhido);
@@ -24,7 +38,10 @@ export default function mes(ctx) {
 
   const html = `
     <header class="topo"><h1 class="grande">Mês</h1></header>
-    <div class="filtros"><label class="pilula on">${esc(mesNome(mesEscolhido))}<select data-mes aria-label="Mês">${meses.map((m) => `<option value="${m}" ${m === mesEscolhido ? 'selected' : ''}>${esc(mesNome(m))}</option>`).join('')}</select></label></div>
+    <div class="filtros">
+      <label class="pilula on">${esc(ano)}<select data-ano aria-label="Ano">${anos.map((a) => `<option value="${a}" ${String(a) === ano ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
+      <label class="pilula on">${esc(soMes(mesEscolhido))}<select data-mes aria-label="Mês">${meses.map((m) => `<option value="${m}" ${m === mesEscolhido ? 'selected' : ''}>${esc(soMes(m))}</option>`).join('')}</select></label>
+    </div>
     <section class="card resumo" aria-label="Resumo do mês">
       <div class="bloco" data-bloco="receitas"><h2>Receitas</h2>
         <div class="lin"><span>Recebidas</span><b class="verde">${reais(r.recebido)}</b></div>
@@ -40,12 +57,8 @@ export default function mes(ctx) {
         <div class="lin tot"><span>Total</span><b class="${cor(r.saldo)}">${reais(r.saldo)}</b></div></div>
       <p class="nota">Previsto = ainda vai entrar ou sair (lançamentos “a receber” e “a pagar”). Efetuado = recebido menos pago. Faturas de cartão ainda não pagas entram como despesa prevista; ao pagar a fatura, viram despesa paga. ${ajuda('previstas')}</p>
     </section>
-    <section class="card" aria-label="Despesas por categoria">
-      <h2>Despesas por categoria</h2>
-      ${fatias.length ? `<div class="rosca-wrap">${rosca(fatias, reais(totalDesp).replace('R$ ', ''))}<div class="rosca-leg">${cats.slice(0, 5).map((c) => `<span><i style="background:${corCat(catPorId.get(c.id))}"></i>${esc(c.nome)}</span>`).join('')}${cats.length > 5 ? `<span class="rot">+ ${cats.length - 5} categorias</span>` : ''}</div></div>` : ''}
-      <div>${cats.length ? cats.map((c) => `<div class="cat-linha"><div class="r"><span class="cnome">${badgeCat(catPorId.get(c.id))}${esc(c.nome)}</span><span>${reais(c.valor)}</span></div>
-        <div class="b"><i style="width:${Math.max(2, Math.round((c.valor / maior) * 100))}%;background:${corCat(catPorId.get(c.id))}"></i></div><small>${(c.pct * 100).toFixed(1).replace('.', ',')}% das despesas</small></div>`).join('') : '<p class="vazio">Sem despesas neste mês. Quando você lançar uma despesa, ela aparece aqui por categoria.</p>'}</div>
-    </section>
+    ${cartaoCategorias('Receitas por categoria', recs, 'das receitas', 'Sem receitas neste mês. Quando você lançar uma receita, ela aparece aqui por categoria.')}
+    ${cartaoCategorias('Despesas por categoria', cats, 'das despesas', 'Sem despesas neste mês. Quando você lançar uma despesa, ela aparece aqui por categoria.')}
     <section class="card" aria-label="Metas do mês">
       <div class="linha-tit"><h2>Metas do mês</h2>${ajuda('meta')}</div>
       ${metas.length ? metas.map((m) => `<div class="meta-linha" data-meta="${esc(m.id)}"><div class="r"><span class="cnome">${badgeCat(catPorId.get(m.id))}${esc(m.nome)}</span><span>${reais(m.gasto)} <span class="rot">de ${reais(m.meta)}</span></span></div>
@@ -73,6 +86,7 @@ export default function mes(ctx) {
     html,
     montar(raiz) {
       raiz.querySelector('[data-mes]').addEventListener('change', (e) => { mesEscolhido = e.target.value; ctx.recarregar(); });
+      raiz.querySelector('[data-ano]').addEventListener('change', (e) => { mesEscolhido = e.target.value + mesEscolhido.slice(4); ctx.recarregar(); });
       ligarAjudas(raiz);
     },
   };

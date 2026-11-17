@@ -363,7 +363,7 @@ function relatorio(d, texto, hoje) {
     }
     const g = D.saldoGeral(d, hoje), s = D.saldosContas(d);
     return { tipo: 'relatorio', titulo: 'Saldo geral', destaque: { rotulo: 'Saldo geral', valor: g.total, cor: 'azul' },
-      linhas: [{ titulo: 'Em contas', valor: g.contas }, { titulo: 'Caixinhas', valor: g.caixinhas }, { titulo: 'Empréstimos a receber', valor: g.emprestimo }, { titulo: 'Em aberto (a receber − a pagar)', valor: g.aberto, cor: g.aberto < 0 ? 'verm' : '' },
+      linhas: [{ titulo: 'Em contas', valor: g.contas }, { titulo: 'Caixinhas', valor: g.caixinhas }, { titulo: 'Empréstimos a receber', valor: g.emprestimo }, { titulo: 'Em aberto (fora do saldo geral)', valor: g.aberto, cor: g.aberto < 0 ? 'verm' : '' },
         ...D.contasAtivas(d).map((c) => ({ titulo: `· ${c.nome}`, valor: s[c.id] || 0 }))], href: '#/contas' };
   }
 

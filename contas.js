@@ -74,10 +74,11 @@ export default function contas(ctx) {
     <section class="saldo"><div><div class="eyebrow">RESUMO · SALDO GERAL ${ajuda('contas')}</div><div class="valor">${reais(g.total)}</div></div>
       <button class="claro" data-expandir>${todosAbertos ? 'Recolher tudo' : 'Ver o saldo de todas as contas'}</button></section>
     <section class="card res-contas" style="gap:0">${grupos.map(grupoHtml).join('')}
-      <p class="nota">Cartões mostram o que falta pagar da fatura em aberto; a que vence até o fim do mês já está descontada em “Em aberto” no saldo geral. Toque em um grupo para ver o saldo de cada conta.</p></section>
+      <p class="nota">Cartões mostram o que falta pagar da fatura em aberto; o saldo geral soma contas, caixinhas e empréstimos (o que está em aberto fica de fora). Toque em um grupo para ver o saldo de cada conta.</p></section>
     ${cartoesArq.length ? `<section class="card" style="gap:2px"><h2>Cartões arquivados</h2><div class="lista">${cartoesArq.map(linhaCartao).join('')}</div></section>` : ''}
     ${arquivadas.length ? `<section class="card" style="gap:2px"><h2>Contas arquivadas</h2><div class="lista">${arquivadas.map(linhaConta).join('')}</div></section>` : ''}
     ${arqOutros.length ? `<section class="card" style="gap:2px"><h2>Caixinhas e empréstimos arquivados</h2><div class="lista">${arqOutros.join('')}</div></section>` : ''}
+    <a class="card" href="#/importar"><div class="linha-tit"><h2>Importar extrato do banco</h2><span class="link">Abrir ›</span></div><p class="nota">Leia o PDF do extrato e veja o que falta no app, o que está diferente e se o saldo bate.</p></a>
     <a class="card" href="#/honorarios"><div class="linha-tit"><h2>Honorários a receber</h2><span class="link">Ver ›</span></div></a>
     <p class="nota" style="text-align:center">Toque em uma conta, caixinha ou empréstimo para abrir. Saldo da conta = saldo inicial + lançamentos pagos; transferências entre contas, caixinhas e empréstimos não mudam o total.</p>`;
 

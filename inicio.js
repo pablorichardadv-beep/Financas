@@ -1,4 +1,6 @@
-import { icone, esc } from '../ui.js';
+import { icone, esc, aviso } from '../ui.js';
+import { definirMeta } from '../db.js';
+import { abrirEditorConta } from './cadastros.js';
 import { reais, num, hojeISO, mesAtual, mesLongo, saudacaoData } from '../format.js';
 import * as D from '../domain.js';
 import { nomes, linhaItem } from './comum.js';
@@ -21,6 +23,8 @@ export default function inicio(ctx) {
   const h = D.resumoHonorarios(d, hoje);
   const n = nomes(d);
   const semDados = d.contas.length === 0 && d.lancamentos.length === 0;
+  const nome = D.primeiroNome(d.meta.nome);
+  const ola = nome ? `Olá, ${esc(nome)}` : 'Olá!';
 
   const ultimos = d.lancamentos
     .map((l, i) => ({ l, i }))
@@ -42,15 +46,18 @@ export default function inicio(ctx) {
   const pctRecebido = r.receitas ? Math.round((r.recebido / r.receitas) * 100) : 0;
 
   const vazioHtml = `
-    <header class="topo"><div><span class="sub">${saudacaoData()}</span><span class="tit">Olá, Pablo</span></div>
+    <header class="topo"><div><span class="sub">${saudacaoData()}</span><span class="tit">${ola}</span></div>
       <a class="btn-ic" href="#/ajustes" aria-label="Ajustes">${icone.ajustes()}</a></header>
     <section class="card"><h2>Vamos começar</h2>
-      <p class="nota">O app está vazio. Carregue o arquivo <b>dados-iniciais.json</b> (saldos e lançamentos a partir de novembro/2026) que você recebeu junto com o app.</p>
-      <a class="btn" href="#/ajustes" style="display:flex;align-items:center;justify-content:center">Carregar dados iniciais</a></section>`;
+      <div class="campo"><label for="nome-novo">Seu nome</label><input id="nome-novo" autocomplete="given-name" autocapitalize="words" placeholder="Como quer ser chamado" value="${esc(d.meta.nome || '')}"></div>
+      <p class="nota">Primeira vez usando? Toque em <b>Começar do zero</b>: o app cria categorias básicas e a conta Carteira; depois você cadastra suas contas de banco com o saldo de hoje.</p>
+      <button class="btn" data-zero>Começar do zero</button>
+      <p class="nota">Já tem um backup deste app (ou um arquivo de dados iniciais)? Use o botão abaixo.</p>
+      <a class="btn sec" href="#/ajustes" data-ir-backup style="display:flex;align-items:center;justify-content:center">Restaurar backup ou carregar dados iniciais</a></section>`;
 
   const html = semDados ? vazioHtml : `
     <header class="topo">
-      <div><span class="sub">${saudacaoData()}</span><span class="tit">Olá, Pablo</span></div>
+      <div><span class="sub">${saudacaoData()}</span><span class="tit">${ola}</span></div>
       <a class="btn-ic" href="#/ajustes" aria-label="Ajustes">${icone.ajustes()}</a>
     </header>
     ${faixa}
@@ -63,6 +70,7 @@ export default function inicio(ctx) {
         <a href="#/contas"><span>Empréstimos</span><span>${reais(g.emprestimo)}</span></a>
         <a href="#/lancamentos"><span>Em aberto ${ajuda('emAberto')}</span><span>${reais(g.aberto)}</span></a>
       </div>
+      <small class="saldo-nota">Saldo geral = contas + caixinhas + empréstimos. “Em aberto” fica de fora.</small>
     </section>
     ${faixaHoje}
     <section class="card" aria-label="Resumo do mês">
@@ -94,6 +102,18 @@ export default function inicio(ctx) {
       raiz.querySelectorAll('.item[data-id]').forEach((b) => (b.onclick = () => abrirDetalhe(ctx, b.dataset.id)));
       ligarAjudas(raiz);
       raiz.querySelector('[data-backup]')?.addEventListener('click', () => ctx.ir('ajustes'));
+      const campoNome = raiz.querySelector('#nome-novo');
+      const salvarNome = async () => { const v = campoNome?.value.trim(); if (v && v !== (ctx.dados.meta.nome || '')) await definirMeta('nome', v); };
+      raiz.querySelector('[data-ir-backup]')?.addEventListener('click', () => { salvarNome(); });
+      raiz.querySelector('[data-zero]')?.addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        await salvarNome();
+        await definirMeta('seed_aplicado', new Date().toISOString());
+        await ctx.gravar(D.opsComecarDoZero());
+        aviso('Pronto! Agora cadastre sua primeira conta de banco com o saldo de hoje.');
+        ctx.ir('contas');
+        setTimeout(() => abrirEditorConta(ctx, null), 350);   // já abre o cadastro da primeira conta
+      });
     },
   };
 }
