@@ -78,6 +78,7 @@ export default function contas(ctx) {
     ${cartoesArq.length ? `<section class="card" style="gap:2px"><h2>Cartões arquivados</h2><div class="lista">${cartoesArq.map(linhaCartao).join('')}</div></section>` : ''}
     ${arquivadas.length ? `<section class="card" style="gap:2px"><h2>Contas arquivadas</h2><div class="lista">${arquivadas.map(linhaConta).join('')}</div></section>` : ''}
     ${arqOutros.length ? `<section class="card" style="gap:2px"><h2>Caixinhas e empréstimos arquivados</h2><div class="lista">${arqOutros.join('')}</div></section>` : ''}
+    <a class="card" href="#/importar"><div class="linha-tit"><h2>Importar extrato do banco</h2><span class="link">Abrir ›</span></div><p class="nota">Leia o PDF do extrato e veja o que falta no app, o que está diferente e se o saldo bate.</p></a>
     <a class="card" href="#/honorarios"><div class="linha-tit"><h2>Honorários a receber</h2><span class="link">Ver ›</span></div></a>
     <p class="nota" style="text-align:center">Toque em uma conta, caixinha ou empréstimo para abrir. Saldo da conta = saldo inicial + lançamentos pagos; transferências entre contas, caixinhas e empréstimos não mudam o total.</p>`;
 

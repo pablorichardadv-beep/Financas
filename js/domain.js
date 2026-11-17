@@ -1116,3 +1116,17 @@ export function candidatasCopia(d, origem, destino) {
 export const opsCopiarContas = (itens) => itens.filter((i) => i.valor > 0).map((i) => ['put', 'lancamentos', {
   id: novoId('l'), tipo: 'despesa', descricao: i.descricao, valor: i.valor, data: i.data, conta: i.conta || null, categoria: i.categoria || null, situacao: 'aberto',
 }]);
+
+// ---------- começar do zero (app novo, sem backup) ----------
+const PADRAO_DESPESA = ['Moradia', 'Fixas', 'Supermercado', 'Alimentação', 'Gasolina', 'Transporte', 'Saúde', 'Farmácia', 'Educação', 'Lazer', 'Vestuário', 'Presentes', 'Outros'];
+const PADRAO_RECEITA = ['Salário', 'Serviços', 'Rendimentos', 'Outros'];
+/** Operações que deixam o app pronto para uso: categorias básicas e a conta "Carteira" (dinheiro, saldo zero). */
+export function opsComecarDoZero() {
+  const cats = [
+    ...PADRAO_DESPESA.map((nome, i) => ({ id: `d${i + 1}`, codigo: i + 1, nome, tipo: 'despesa', meta_pct: null })),
+    ...PADRAO_RECEITA.map((nome, i) => ({ id: `r${i + 1}`, codigo: PADRAO_DESPESA.length + i + 1, nome, tipo: 'receita', meta_pct: null })),
+  ];
+  return [...cats.map((c) => ['put', 'categorias', c]), ['put', 'contas', { id: 'carteira', nome: 'Carteira', tipo: 'dinheiro', saldo_abertura: 0 }]];
+}
+/** Nome para a saudação: só o primeiro nome, com inicial maiúscula. */
+export const primeiroNome = (nome) => { const p = String(nome || '').trim().split(/\s+/)[0] || ''; return p ? p[0].toUpperCase() + p.slice(1) : ''; };

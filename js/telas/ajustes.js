@@ -1,5 +1,5 @@
 // Ajustes: backup, restauração e instruções de instalação.
-import { esc, confirmar } from '../ui.js';
+import { esc, confirmar, aviso } from '../ui.js';
 import { hojeISO, dataBR } from '../format.js';
 import { montarBackup, validarBackup, substituirTudo, definirMeta } from '../db.js';
 
@@ -12,6 +12,10 @@ export default function ajustes(ctx) {
 
   const html = `
     <header class="topo"><h1 class="grande">Ajustes</h1><a class="link" href="#/">Fechar</a></header>
+    <section class="card" aria-label="Seu nome"><h2>Seu nome</h2>
+      <div class="campo"><label for="nome">Nome que aparece no Início</label><input id="nome" autocomplete="given-name" autocapitalize="words" placeholder="Ex.: Pablo" value="${esc(d.meta.nome || '')}"></div>
+      <button class="btn sec" data-salvar-nome>Salvar nome</button>
+      <p class="nota">Fica só neste aparelho e não entra no backup: se alguém da família restaurar o seu backup, continua com o próprio nome.</p></section>
     <section class="card" style="gap:2px"><h2>Cadastros</h2>
       <div class="lista">
         <a class="item" href="#/categorias"><span class="t"><b>Categorias</b><small>Criar, renomear, arquivar ou excluir</small></span><span class="rot">›</span></a>
@@ -30,12 +34,18 @@ export default function ajustes(ctx) {
     </section>
     ${instalado() ? '' : `<section class="card"><h2>Instalar no iPhone</h2>
       <p class="nota">1. Abra este endereço no <b>Safari</b>.<br>2. Toque em <b>Compartilhar</b> (quadrado com seta).<br>3. Escolha <b>Adicionar à Tela de Início</b>.<br>Depois, abra sempre pelo ícone: funciona sem internet.</p></section>`}
-    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 20 · dados da planilha a partir de 01/11/2026.</p></section>`;
+    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 22.</p></section>`;
 
   return {
     html,
     montar(raiz) {
       const msg = raiz.querySelector('#msg');
+      raiz.querySelector('[data-salvar-nome]').onclick = async () => {
+        const v = raiz.querySelector('#nome').value.trim();
+        await definirMeta('nome', v);
+        aviso(v ? `Nome salvo: ${v}` : 'Nome apagado');
+        await ctx.recarregar();
+      };
       raiz.querySelectorAll('[data-tema-op]').forEach((b) => (b.onclick = () => {
         window.Tema?.definir(b.dataset.temaOp);
         raiz.querySelectorAll('[data-tema-op]').forEach((x) => x.classList.toggle('on', x === b));
