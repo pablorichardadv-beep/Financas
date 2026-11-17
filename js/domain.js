@@ -161,7 +161,8 @@ export function saldoGeral(d, hoje = hojeISO()) {
   const caixinhas = totalCaixinhas(d);
   const emprestimo = totalEmprestimos(d);
   const aberto = emAberto(d, hoje).liquido;
-  return { contas, caixinhas, emprestimo, aberto, total: contas + caixinhas + emprestimo + aberto };
+  // saldo geral = o que já é seu (contas e caixinhas) + empréstimos a receber. "Em aberto" é mostrado à parte: não entra no total.
+  return { contas, caixinhas, emprestimo, aberto, total: contas + caixinhas + emprestimo };
 }
 
 // ---------- mês ----------
@@ -214,6 +215,15 @@ export function despesasPorCategoria(d, mes) {
   return [...porCat.entries()]
     .map(([id, valor]) => ({ id, nome: nome.get(id) || 'Sem categoria', valor, pct: total ? valor / total : 0 }))
     .sort((a, b) => b.valor - a.valor);
+}
+
+/** Receitas do mês por categoria (recebidas e a receber). */
+export function receitasPorCategoria(d, mes) {
+  const porCat = new Map();
+  for (const l of d.lancamentos) if (l.tipo === 'receita' && mesDoLanc(l) === mes) porCat.set(l.categoria || '', (porCat.get(l.categoria || '') || 0) + l.valor);
+  const nome = new Map(d.categorias.map((c) => [c.id, c.nome]));
+  const total = soma([...porCat.values()]);
+  return [...porCat.entries()].map(([id, valor]) => ({ id, nome: nome.get(id) || 'Sem categoria', valor, pct: total ? valor / total : 0 })).sort((a, b) => b.valor - a.valor);
 }
 
 // ---------- faturas do cartão: em aberto ou paga ----------

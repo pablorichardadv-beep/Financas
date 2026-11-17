@@ -74,7 +74,7 @@ export default function contas(ctx) {
     <section class="saldo"><div><div class="eyebrow">RESUMO · SALDO GERAL ${ajuda('contas')}</div><div class="valor">${reais(g.total)}</div></div>
       <button class="claro" data-expandir>${todosAbertos ? 'Recolher tudo' : 'Ver o saldo de todas as contas'}</button></section>
     <section class="card res-contas" style="gap:0">${grupos.map(grupoHtml).join('')}
-      <p class="nota">Cartões mostram o que falta pagar da fatura em aberto; a que vence até o fim do mês já está descontada em “Em aberto” no saldo geral. Toque em um grupo para ver o saldo de cada conta.</p></section>
+      <p class="nota">Cartões mostram o que falta pagar da fatura em aberto; o saldo geral soma contas, caixinhas e empréstimos (o que está em aberto fica de fora). Toque em um grupo para ver o saldo de cada conta.</p></section>
     ${cartoesArq.length ? `<section class="card" style="gap:2px"><h2>Cartões arquivados</h2><div class="lista">${cartoesArq.map(linhaCartao).join('')}</div></section>` : ''}
     ${arquivadas.length ? `<section class="card" style="gap:2px"><h2>Contas arquivadas</h2><div class="lista">${arquivadas.map(linhaConta).join('')}</div></section>` : ''}
     ${arqOutros.length ? `<section class="card" style="gap:2px"><h2>Caixinhas e empréstimos arquivados</h2><div class="lista">${arqOutros.join('')}</div></section>` : ''}

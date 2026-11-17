@@ -63,6 +63,7 @@ export default function inicio(ctx) {
         <a href="#/contas"><span>Empréstimos</span><span>${reais(g.emprestimo)}</span></a>
         <a href="#/lancamentos"><span>Em aberto ${ajuda('emAberto')}</span><span>${reais(g.aberto)}</span></a>
       </div>
+      <small class="saldo-nota">Saldo geral = contas + caixinhas + empréstimos. “Em aberto” fica de fora.</small>
     </section>
     ${faixaHoje}
     <section class="card" aria-label="Resumo do mês">

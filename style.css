@@ -284,3 +284,4 @@ a.btn { display: flex; align-items: center; justify-content: center; text-decora
 
 :root[data-tema="escuro"] { color-scheme: dark; }
 :root[data-tema="claro"] { color-scheme: light; }
+.saldo-nota { display: block; font-size: 11.5px; color: var(--blue-pale); opacity: .9; margin-top: 2px; }
