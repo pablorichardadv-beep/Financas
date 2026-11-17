@@ -2,7 +2,7 @@
 import { esc, aviso } from '../ui.js';
 import { reais, dataBR, norm } from '../format.js';
 import * as D from '../domain.js';
-import { lerPdf, lerExtratoItau, conciliar, opsImportacao } from '../extrato.js';
+import { lerPdf, lerExtratoItau, lerExtratoTexto, conciliar, opsImportacao } from '../extrato.js';
 import { abrirDetalhe } from './detalhe.js';
 import { badgeCat } from '../visual.js';
 
@@ -69,6 +69,10 @@ export default function importar(ctx) {
       <label class="btn ${conc ? 'sec' : ''}" style="display:flex;align-items:center;justify-content:center">${conc ? 'Escolher outro PDF' : 'Escolher o PDF do extrato'}<input type="file" accept=".pdf,application/pdf" data-pdf hidden></label>
       <p class="nota">No app do Itaú: <b>Extrato › escolha o período › Compartilhar › Salvar em Arquivos</b> (PDF). O PDF é lido aqui no iPhone, sem internet, e nada é gravado sem você conferir.</p>
       <div class="erro" id="imsg" role="status"></div>
+      <details class="colar" ${estado ? '' : ''}><summary class="link">O PDF não abriu? Cole o texto do extrato</summary>
+        <p class="nota">Abra o PDF (em Arquivos ou no próprio Itaú), toque e segure no texto, escolha <b>Selecionar Tudo</b> e depois <b>Copiar</b>. Volte aqui, toque no campo abaixo e <b>Colar</b>.</p>
+        <textarea id="itexto" class="fala" rows="5" placeholder="Cole aqui o texto do extrato"></textarea>
+        <button class="btn sec" data-ler-texto>Ler o texto colado</button></details>
     </section>
     ${corpo}`;
 
@@ -88,8 +92,16 @@ export default function importar(ctx) {
           estado = { conta: raiz.querySelector('#iconta').value, ext, arquivo: arq.name };
           ctx.recarregar();
         } catch (err) {
-          console.warn('importar', err); msg.textContent = 'Não consegui ler este PDF. Confira se é o extrato da conta em PDF (não uma foto).';
+          console.warn('importar', err);
+          msg.innerHTML = `Não consegui abrir este PDF neste aparelho. Use a opção <b>“Cole o texto do extrato”</b> logo abaixo.<br><small style="opacity:.7">Detalhe técnico: ${esc(String(err?.message || err).slice(0, 160))}</small>`;
+          raiz.querySelector('details.colar').open = true;
         }
+      };
+      raiz.querySelector('[data-ler-texto]').onclick = () => {
+        const ext = lerExtratoTexto(raiz.querySelector('#itexto').value);
+        if (!ext.linhas.length) { msg.textContent = 'Não encontrei lançamentos no texto colado. Confira se copiou o extrato inteiro (Selecionar Tudo › Copiar).'; return; }
+        estado = { conta: raiz.querySelector('#iconta').value, ext, arquivo: 'texto colado' };
+        ctx.recarregar();
       };
       raiz.querySelectorAll('[data-abrir]').forEach((b) => (b.onclick = () => abrirDetalhe(ctx, b.dataset.abrir)));
       if (!conc) return;

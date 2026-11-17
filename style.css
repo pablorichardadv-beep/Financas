@@ -301,3 +301,4 @@ a.btn { display: flex; align-items: center; justify-content: center; text-decora
 details summary { cursor: pointer; padding: 4px 0; list-style: none; } details summary::-webkit-details-marker { display: none; }
 details[open] summary { margin-bottom: 6px; }
 .copia-barra .btn { width: 100%; }
+.colar { display: flex; flex-direction: column; gap: 8px; } .colar summary { font-size: 14px; font-weight: 600; } .colar .btn { margin-top: 8px; }

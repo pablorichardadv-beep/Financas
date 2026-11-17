@@ -7,8 +7,16 @@ import * as D from './domain.js';
 /** Abre o PDF e devolve os pedaços de texto com posição: [{ p, x, y, t }]. */
 export async function lerPdf(bytes) {
   const pdfjs = await import('./vendor/pdf.min.js');
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.js', import.meta.url).href;
-  const doc = await pdfjs.getDocument({ data: bytes, isEvalSupported: false }).promise;
+  const workerUrl = new URL('./vendor/pdf.worker.min.js', import.meta.url).href;
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  let doc;
+  try {
+    doc = await pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+  } catch (e) {
+    // plano B: sem "worker" separado (alguns Safari recusam o worker em módulo); roda tudo na própria página
+    globalThis.pdfjsWorker = await import('./vendor/pdf.worker.min.js');
+    doc = await pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+  }
   const out = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const tc = await (await doc.getPage(p)).getTextContent();
@@ -85,6 +93,49 @@ export function lerExtratoItau(itens) {
       const col = c.x >= colunas.saldo - 5 ? 'saldo' : c.x >= colunas.valor - 5 ? 'valor' : c.x >= colunas.descricao - 5 ? 'descricao' : c.x >= colunas.tipo - 5 ? 'tipo' : null;
       if (col) atual[col].push(c.t);
     }
+  }
+  fecha();
+  return out;
+}
+
+// ---------- leitura do texto copiado do PDF (plano C: abrir o PDF, Selecionar tudo › Copiar › Colar) ----------
+const TIPOS_ITAU = ['PAGAMENTO DE PIX QR CODE', 'PAGAMENTO DE PIX', 'PAGAMENTO DE BOLETO', 'PAGAMENTO DE TARIFA', 'PAGAMENTO DE SEGURO', 'PAGAMENTO DE CONTA',
+  'DÉBITO AUTOMÁTICO', 'COMPRA DÉBITO', 'COMPRA CRÉDITO', 'PIX RECEBIDO', 'PIX ENVIADO', 'PIX AUTOMÁTICO', 'TED RECEBIDA', 'TED ENVIADA', 'DOC RECEBIDO',
+  'TRANSFERÊNCIA RECEBIDA', 'TRANSFERÊNCIA ENVIADA', 'RENDIMENTOS', 'ENTRADA', 'SAÍDA', 'SAQUE', 'DEPÓSITO', 'ESTORNO', 'IOF', 'JUROS'];
+const RE_VALOR_FIM = /(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
+export function lerExtratoTexto(texto) {
+  const linhasTxt = String(texto || '').replace(/\r/g, '').split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const out = { banco: 'Itaú', titular: linhasTxt[0] || '', saldoFinal: null, inicio: null, fim: null, linhas: [], saldosDia: {} };
+  const todo = linhasTxt.join('\n');
+  const sc = todo.match(/saldo em conta\s*\n?\s*R\$\s*(-?[\d.]+,\d{2})/i);
+  if (sc) out.saldoFinal = centavosDe(sc[1]);
+  const per = todo.match(/(\d{2}\/\d{2}\/\d{4})\s+até\s+(\d{2}\/\d{2}\/\d{4})/i);
+  if (per) { out.inicio = isoDe(per[1]); out.fim = isoDe(per[2]); }
+  let futuro = false, ativo = false, atual = null;
+  const fecha = () => {
+    if (!atual) return;
+    let corpo = atual.partes.join(' ').replace(/\s+/g, ' ').trim();
+    const mv = corpo.match(RE_VALOR_FIM);
+    if (mv) {
+      corpo = corpo.slice(0, mv.index).trim();
+      if (!corpo) out.saldosDia[atual.data] = centavosDe(mv[1]);
+      else {
+        const sem = corpo.toUpperCase();
+        const tipo = TIPOS_ITAU.find((t) => sem.startsWith(t + ' ') || sem === t) || '';
+        out.linhas.push({ data: atual.data, tipo, descricao: (tipo ? corpo.slice(tipo.length) : corpo).trim() || corpo, valor: centavosDe(mv[1]), futuro });
+      }
+    }
+    atual = null;
+  };
+  for (const l of linhasTxt) {
+    if (/^lançamentos futuros/i.test(l)) { fecha(); futuro = true; ativo = true; continue; }
+    if (/^lançamentos$/i.test(l)) { fecha(); futuro = false; ativo = true; continue; }
+    if (/^(posição consolidada|limites\b|aviso\b)/i.test(l)) { fecha(); ativo = false; continue; }
+    if (/^data\b.*descri/i.test(l) || /^(saídas|entradas) futuras$/i.test(l)) { fecha(); continue; }
+    if (!ativo) continue;
+    const m = l.match(/^(\d{2}\/\d{2}\/\d{4})\s*(.*)$/);
+    if (m) { fecha(); atual = { data: isoDe(m[1]), partes: [m[2]] }; continue; }
+    if (atual) atual.partes.push(l);
   }
   fecha();
   return out;
