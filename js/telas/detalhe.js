@@ -41,7 +41,8 @@ export function abrirDetalhe(ctx, id) {
     const dc = linhas.find((x) => x[0] === 'Data');
     if (dc) dc[0] = 'Data da compra';
     if (l.parcela) linhas.push(['Parcela', `${l.parcela} de ${l.parcelas}`]);
-    if (l.valor < 0) { const orig = d.compras_cartao.find((x) => x.id === l.estorno_de); linhas.push(['Estorno de', orig ? `${orig.descricao} (${reais(orig.valor)})` : 'Compra excluída']); }
+    if (l.valor < 0 && !l.estorno_de) linhas.push(['Estorno', 'Avulso (compra não lançada no app)']);
+    if (l.valor < 0 && l.estorno_de) { const orig = d.compras_cartao.find((x) => x.id === l.estorno_de); linhas.push(['Estorno de', orig ? `${orig.descricao} (${reais(orig.valor)})` : 'Compra excluída']); }
     for (const e of D.estornosDe(d, l.id)) linhas.push(['Estornado', `${reais(-e.valor)} em ${dataBR(e.data)}`]);
     if (l.recorrencia) linhas.push(['Recorrência', d.recorrencias.find((x) => x.id === l.recorrencia)?.ativa ? 'Todo mês' : 'Cancelada']);
     linhas.unshift(['Cartão', c ? D.rotuloCartao(c) : 'Sem cartão (compra antiga)']);

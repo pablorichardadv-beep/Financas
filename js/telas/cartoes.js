@@ -52,7 +52,7 @@ export default function cartao(ctx, args) {
       </div>
     </section>
     ${sit.pendente > 0 ? `<button class="btn" data-pagar>Pagar fatura · ${reais(sit.pendente)}</button>` : ''}
-    <button class="btn ${sit.pendente > 0 ? 'sec' : ''}" data-compra>+ Compra neste cartão</button>
+    <div class="dois-btn"><button class="btn ${sit.pendente > 0 ? 'sec' : ''}" data-compra>+ Compra neste cartão</button><button class="btn sec" data-estorno>+ Estorno</button></div>
     ${sit.pagamentos.length ? `<section class="card" style="gap:2px"><h2>Pagamentos desta fatura</h2><div class="lista">${sit.pagamentos.map((l) => linhaItem(l, n, { comData: true })).join('')}</div>
       <p class="nota">Toque em um pagamento para excluir. A fatura volta a ficar em aberto.</p></section>` : ''}
     ${sit.status === 'antiga' ? '<p class="nota">Esta fatura é anterior ao controle de pagamento do app: ela não entra em “a pagar” nem nos lançamentos em aberto.</p>' : ''}
@@ -71,6 +71,7 @@ export default function cartao(ctx, args) {
       raiz.querySelector('[data-mes]').addEventListener('change', (e) => { mesEscolhido = e.target.value; ctx.recarregar(); });
       raiz.querySelector('[data-pagar]')?.addEventListener('click', () => abrirPagarFatura(ctx, c, sit));
       raiz.querySelector('[data-compra]').onclick = () => { prepararNovo({ cartao: true, cartao_id: c.id, voltar: { rota: 'cartao/' + c.id, aoSalvar: (mes) => { mesEscolhido = mes; cartaoDoMes = c.id; } } }); ctx.ir('novo'); };
+      raiz.querySelector('[data-estorno]').onclick = () => abrirEstornoAvulso(ctx, c, (mes) => { mesEscolhido = mes; cartaoDoMes = c.id; });
       raiz.querySelectorAll('[data-rec]').forEach((b) => (b.onclick = () => abrirRecorrencia(ctx, b.dataset.rec)));
       raiz.querySelectorAll('.item[data-id]').forEach((b) => (b.onclick = () => abrirDetalhe(ctx, b.dataset.id)));
     },
@@ -230,5 +231,34 @@ export function abrirPagarFatura(ctx, c, sit) {
       conta: q('#fc').value, categoria: q('#fk').value || null, situacao: 'pago', fatura_cartao: c.id, fatura_mes: sit.mes,
     }]]);
     ctx.aviso(v === sit.pendente ? 'Fatura paga' : 'Pagamento lançado');
+  };
+}
+
+/** Estorno de algo que não está lançado (ex.: compra cobrada numa fatura anterior ao app). */
+export function abrirEstornoAvulso(ctx, c, aoSalvar) {
+  const d = ctx.dados;
+  const cats = d.categorias.filter((x) => x.tipo === 'despesa' && !x.arquivada).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const g = folha(`
+    <h2>Estorno no cartão</h2>
+    <p class="nota">Use quando o banco devolveu um valor de uma compra que não está no app (por exemplo, cobrada numa fatura anterior). Se a compra está no app, toque nela e use “Estornar compra”.</p>
+    <div class="campo"><label for="xd">Descrição</label><input id="xd" placeholder="Ex.: Magazine Luiza" autocomplete="off" autocapitalize="sentences"></div>
+    <div class="campo"><label for="xv">Valor estornado</label><input id="xv" inputmode="numeric" autocomplete="off"></div>
+    <div class="campo"><label for="xt">Data do estorno</label><input id="xt" type="date" value="${hojeISO()}"></div>
+    <div class="campo sel"><label for="xc">Categoria (opcional)</label><select id="xc"><option value="">Sem categoria</option>${cats.map((x) => `<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('')}</select></div>
+    <p class="nota">Se escolher a categoria, o gasto dela no mês diminui junto com a fatura.</p>
+    <p class="nota" id="xonde"></p>
+    <div class="erro" id="xe" role="alert"></div>
+    <button class="btn" data-ok>Lançar estorno</button>`);
+  const q = (s) => g.el.querySelector(s);
+  const valor = ligarCampoValor(q('#xv'), 0, undefined, { substituir: true });
+  const onde = () => { const v = q('#xt').value; if (!v) { q('#xonde').textContent = ''; return; } const m = D.faturaDaCompra(c, v).fatura; q('#xonde').textContent = `O crédito entra na fatura de ${mesNome(m)} (vence ${dataBR(D.datasDaFatura(c, m).vencimento)}).`; };
+  q('#xt').addEventListener('change', onde); onde();
+  q('[data-ok]').onclick = async () => {
+    const r = D.opsEstornoAvulso(d, c, { descricao: q('#xd').value, valor: valor.obter(), data: q('#xt').value, categoria: q('#xc').value || null });
+    if (r.erro) { q('#xe').textContent = r.erro; return; }
+    g.fechar();
+    aoSalvar?.(r.ops[0][2].fatura);
+    await ctx.gravar(r.ops);
+    ctx.aviso('Estorno lançado na fatura');
   };
 }

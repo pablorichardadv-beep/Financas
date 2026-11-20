@@ -1157,3 +1157,15 @@ export function opsEstornarCompra(d, k, { valor, data, cancelarFuturas = false }
   }]);
   return { ops, canceladas: futuras.length };
 }
+/** Estorno avulso: crédito na fatura de algo que não está no app (ex.: compra cobrada numa fatura antiga). */
+export function opsEstornoAvulso(d, c, { descricao, valor, data, categoria = null }) {
+  if (!c) return { erro: 'Escolha o cartão.' };
+  if (!(valor > 0)) return { erro: 'Informe o valor estornado.' };
+  if (!data) return { erro: 'Informe a data do estorno.' };
+  const desc = String(descricao || '').trim();
+  if (!desc) return { erro: 'Informe a descrição (ex.: o nome da loja).' };
+  return { ops: [['put', 'compras_cartao', {
+    id: novoId('k'), cartao: c.id, fatura: faturaDaCompra(c, data).fatura, data, valor: -valor, categoria: categoria || null,
+    descricao: /^estorno\b/i.test(desc) ? desc : `Estorno - ${desc}`, estorno_avulso: true,
+  }]] };
+}
