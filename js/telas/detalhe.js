@@ -1,5 +1,5 @@
 // Folha de detalhes de um lançamento: marcar como paga, editar, excluir.
-import { esc, folha, confirmar } from '../ui.js';
+import { esc, folha, confirmar, ligarCampoValor } from '../ui.js';
 import { reais, dataBR, hojeISO, mesNome } from '../format.js';
 import * as D from '../domain.js';
 import { abrirRecorrencia, mostrarFatura } from './cartoes.js';
@@ -41,6 +41,8 @@ export function abrirDetalhe(ctx, id) {
     const dc = linhas.find((x) => x[0] === 'Data');
     if (dc) dc[0] = 'Data da compra';
     if (l.parcela) linhas.push(['Parcela', `${l.parcela} de ${l.parcelas}`]);
+    if (l.valor < 0) { const orig = d.compras_cartao.find((x) => x.id === l.estorno_de); linhas.push(['Estorno de', orig ? `${orig.descricao} (${reais(orig.valor)})` : 'Compra excluída']); }
+    for (const e of D.estornosDe(d, l.id)) linhas.push(['Estornado', `${reais(-e.valor)} em ${dataBR(e.data)}`]);
     if (l.recorrencia) linhas.push(['Recorrência', d.recorrencias.find((x) => x.id === l.recorrencia)?.ativa ? 'Todo mês' : 'Cancelada']);
     linhas.unshift(['Cartão', c ? D.rotuloCartao(c) : 'Sem cartão (compra antiga)']);
     linhas.push(['Fatura', c ? `${mesNome(l.mes)} · vence em ${dataBR(D.datasDaFatura(c, l.mes).vencimento)}` : mesNome(l.mes)]);
@@ -54,12 +56,15 @@ export function abrirDetalhe(ctx, id) {
   const parcelaPrevista = !ehCartao && l.tipo === 'receita' ? D.parcelaDoLancamento(d, l) : null;
   const podePagar = !ehCartao && l.tipo !== 'transferencia' && !estaPago(l) && (estaAberto(l) || l.situacao === 'guardar');
 
-  const podeRepetir = !daFatura && !doHonorario && !doEmprestimo && l.tipo !== 'transferencia' && !(ehCartao && (l.grupo || l.recorrencia)) && !l.legado;
+  const estorno = ehCartao && l.valor < 0;
+  const podeEstornar = ehCartao && !estorno && l.cartao;
+  const podeRepetir = !estorno && !daFatura && !doHonorario && !doEmprestimo && l.tipo !== 'transferencia' && !(ehCartao && (l.grupo || l.recorrencia)) && !l.legado;
   const f = folha(`
-    <div><h2>${esc(tituloItem(l))}</h2><p class="rot">${esc(l.tipo === 'receita' ? 'Receita' : l.tipo === 'transferencia' ? 'Transferência' : l.tipo === 'cartao' ? 'Cartão de crédito' : 'Despesa')} · <b>${reais(l.valor)}</b></p></div>
+    <div><h2>${esc(tituloItem(l))}</h2><p class="rot">${esc(l.tipo === 'receita' ? 'Receita' : l.tipo === 'transferencia' ? 'Transferência' : estorno ? 'Estorno no cartão (crédito na fatura)' : l.tipo === 'cartao' ? 'Cartão de crédito' : 'Despesa')} · <b>${reais(Math.abs(l.valor))}</b></p></div>
     <div class="card" style="gap:0;padding:6px 16px">${linhas.map(([a, b]) => `<div class="item"><span class="rot">${esc(a)}</span><b style="font-size:14.5px">${esc(b)}</b></div>`).join('')}</div>
     ${podePagar ? `<button class="btn" data-pagar>${l.tipo === 'receita' ? 'Marcar como recebida' : 'Marcar como paga'}</button>` : ''}
     ${daFatura ? '<p class="nota">Este lançamento é o pagamento de uma fatura de cartão. Se você excluir, a fatura volta a ficar em aberto e o saldo da conta volta ao que era.</p>' : parcelaPrevista ? '<p class="nota">Este valor é uma parcela de honorário. Ao marcar como recebida, a parcela também é baixada.</p><button class="btn sec" data-editar>Editar</button>' : doHonorario ? '<p class="nota">Este lançamento é o recebimento de um honorário. Para corrigir, abra o honorário em Contas e desfaça o recebimento. Se você excluir este lançamento, a parcela volta para “a receber”.</p>' : doEmprestimo ? '<p class="nota">Este lançamento faz parte de um empréstimo. Para corrigir, exclua-o e registre de novo pela tela do empréstimo.</p>' : '<button class="btn sec" data-editar>Editar</button>'}
+    ${podeEstornar ? '<button class="btn sec" data-estornar>Estornar compra</button>' : ''}
     ${podeRepetir ? '<button class="btn sec" data-repetir>Repetir este lançamento</button>' : ''}
     <button class="btn perigo" data-excluir>${irmas.length > 1 ? 'Excluir só esta parcela' : 'Excluir'}</button>
     ${recAtiva ? '<button class="btn sec" data-recorrencia>Mudar valor ou cancelar a recorrência</button>' : ''}
@@ -74,7 +79,9 @@ export function abrirDetalhe(ctx, id) {
     });
     ctx.ir('novo');
   });
+  f.el.querySelector('[data-estornar]')?.addEventListener('click', () => { f.fechar(); abrirEstorno(ctx, d.compras_cartao.find((x) => x.id === id)); });
   const be = f.el.querySelector('[data-editar]');
+  if (be && estorno) be.remove();   // estorno não se edita: exclua e estorne de novo
   if (be) be.onclick = () => { f.fechar(); ctx.ir('novo/' + id); };
 
   f.el.querySelector('[data-excluir]').onclick = async () => {
@@ -118,5 +125,40 @@ export function abrirDetalhe(ctx, id) {
         : [['put', 'lancamentos', novo]]);
       ctx.aviso(l.tipo === 'receita' ? 'Marcada como recebida' : 'Marcada como paga');
     };
+  };
+}
+
+/** Estornar uma compra do cartão: valor (total ou parcial), data do estorno e, se for parcelada, cancelar as parcelas que ainda não vieram. */
+export function abrirEstorno(ctx, k) {
+  const d = ctx.dados;
+  if (!k) return;
+  const ja = D.estornosDe(d, k.id).reduce((s, e) => s - e.valor, 0);
+  const g = folha(`
+    <h2>Estornar compra</h2>
+    <p class="nota"><b>${esc(k.descricao || 'Compra')}</b> · ${reais(k.valor)}${ja ? ` · já estornado ${reais(ja)}` : ''}</p>
+    <div class="campo"><label for="ev">Valor estornado</label><input id="ev" inputmode="numeric" autocomplete="off"></div>
+    <div class="campo"><label for="ed">Data do estorno</label><input id="ed" type="date" value="${hojeISO()}"></div>
+    <label class="imp-top" id="efw" hidden><input type="checkbox" id="ef" checked><span class="t"><b id="eft"></b><small>Se o banco cancelou a compra inteira, as parcelas que ainda não vieram saem das próximas faturas.</small></span></label>
+    <p class="nota" id="eonde"></p>
+    <div class="erro" id="ee" role="alert"></div>
+    <button class="btn" data-ok>Estornar</button>`);
+  const q = (s) => g.el.querySelector(s);
+  const campo = ligarCampoValor(q('#ev'), Math.max(0, k.valor - ja), undefined, { substituir: true });
+  const atualizar = () => {
+    const data = q('#ed').value;
+    const c = d.cartoes.find((x) => x.id === k.cartao);
+    const fut = data ? D.parcelasFuturas(d, k, data) : [];
+    q('#efw').hidden = !fut.length;
+    if (fut.length) q('#eft').textContent = `Cancelar as próximas ${fut.length} ${fut.length === 1 ? 'parcela' : 'parcelas'} (${reais(fut.reduce((s, x) => s + x.valor, 0))})`;
+    q('#eonde').textContent = c && data ? `O crédito entra na fatura de ${mesNome(D.faturaDaCompra(c, data).fatura)} (vence ${dataBR(D.datasDaFatura(c, D.faturaDaCompra(c, data).fatura).vencimento)}) e diminui o valor dela.` : '';
+  };
+  q('#ed').addEventListener('change', atualizar);
+  atualizar();
+  q('[data-ok]').onclick = async () => {
+    const r = D.opsEstornarCompra(d, k, { valor: campo.obter(), data: q('#ed').value, cancelarFuturas: !q('#efw').hidden && q('#ef').checked });
+    if (r.erro) { q('#ee').textContent = r.erro; return; }
+    g.fechar();
+    await ctx.gravar(r.ops);
+    ctx.aviso(r.canceladas ? `Estorno lançado e ${r.canceladas} ${r.canceladas === 1 ? 'parcela cancelada' : 'parcelas canceladas'}` : 'Estorno lançado na fatura');
   };
 }

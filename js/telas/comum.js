@@ -46,14 +46,16 @@ export function linhaItem(l, n, { comData = false } = {}) {
     const cartao = l.tipo === 'cartao' && l.cartao_id && n.cartao.get(l.cartao_id);
     if (cartao) partes.push(`${cartao.banco} ••${cartao.final}`);
     if (l.tipo === 'cartao' && l.recorrencia) partes.push('Recorrente');
+    if (l.tipo === 'cartao' && l.valor < 0) partes.unshift('Estorno');
   }
-  const cor = l.tipo === 'receita' ? 'verde' : l.tipo === 'transferencia' ? 'azul' : 'verm';
+  const credito = l.tipo === 'cartao' && l.valor < 0;   // estorno no cartão: crédito na fatura
+  const cor = l.tipo === 'receita' || credito ? 'verde' : l.tipo === 'transferencia' ? 'azul' : 'verm';
   const tag = tagDe(l);
   const emoji = l.tipo === 'fatura' || l.tipo === 'cartao' ? '💳' : l.tipo === 'transferencia' ? '⇄' : null;
   const badge = emoji ? `<span class="cbadge" style="--h:215" aria-hidden="true">${emoji}</span>` : badgeCat(l.categoria ? n.cat.get(l.categoria) : null);
   return `<button class="item" data-id="${esc(l.id)}">${badge}
     <span class="t"><b>${esc(tituloItem(l))}</b><small>${esc(partes.join(' · '))}${tag}</small></span>
-    <span class="v ${cor}">${comSinal(l.valor, l.tipo)}</span></button>`;
+    <span class="v ${cor}">${credito ? '+ ' + reais(-l.valor) : comSinal(l.valor, l.tipo)}</span></button>`;
 }
 
 /** Rótulo e sinal de um movimento de caixinha ou de empréstimo (para os históricos). */

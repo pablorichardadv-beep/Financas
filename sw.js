@@ -1,6 +1,6 @@
 // Service worker: guarda os arquivos do app para abrir sem internet.
 // Ao publicar uma versão nova, troque o número de VERSAO para o iPhone baixar os arquivos atualizados.
-const VERSAO = 'v23';
+const VERSAO = 'v24';
 const CACHE = 'financas-' + VERSAO;
 const ARQUIVOS = [
   './', './index.html', './style.css', './manifest.webmanifest',

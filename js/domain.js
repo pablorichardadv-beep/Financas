@@ -601,7 +601,7 @@ export function mesesDisponiveis(d, mesAtual) {
 export function itensDaLista(d) {
   const cartao = d.compras_cartao.map((k) => ({
     id: k.id, tipo: 'cartao', data: null, data_compra: k.data || null, mes: k.fatura, descricao: k.descricao, valor: k.valor,
-    categoria: k.categoria, conta: null, situacao: 'cartao', cartao_id: k.cartao || null, recorrencia: k.recorrencia || null,
+    categoria: k.categoria, conta: null, situacao: 'cartao', cartao_id: k.cartao || null, recorrencia: k.recorrencia || null, estorno: k.valor < 0,
   }));
   // uma linha por fatura em aberto, com o valor ainda a pagar (atualiza sozinha a cada compra)
   const faturas = faturasEmAberto(d).map((f) => ({
@@ -1130,3 +1130,30 @@ export function opsComecarDoZero() {
 }
 /** Nome para a saudação: só o primeiro nome, com inicial maiúscula. */
 export const primeiroNome = (nome) => { const p = String(nome || '').trim().split(/\s+/)[0] || ''; return p ? p[0].toUpperCase() + p.slice(1) : ''; };
+
+// ---------- estorno de compra no cartão ----------
+// O estorno é um crédito na fatura: uma "compra" com valor negativo, na fatura do dia em que o banco estornou,
+// com a mesma categoria da compra (assim o gasto da categoria também diminui). estorno_de aponta para a compra original.
+export const ehEstorno = (k) => k && k.valor < 0;
+export const estornosDe = (d, id) => (d.compras_cartao || []).filter((k) => k.estorno_de === id);
+/** Parcelas da mesma compra que ficam em faturas depois da fatura do estorno (ainda não cobradas). */
+export function parcelasFuturas(d, k, dataEstorno) {
+  const c = (d.cartoes || []).find((x) => x.id === k.cartao);
+  if (!k.grupo || !c) return [];
+  const fat = faturaDaCompra(c, dataEstorno).fatura;
+  return d.compras_cartao.filter((x) => x.grupo === k.grupo && x.valor > 0 && x.fatura > fat);
+}
+export function opsEstornarCompra(d, k, { valor, data, cancelarFuturas = false }) {
+  const c = (d.cartoes || []).find((x) => x.id === k.cartao);
+  if (!c) return { erro: 'Esta compra não está ligada a um cartão.' };
+  if (!(valor > 0)) return { erro: 'Informe o valor estornado.' };
+  if (!data) return { erro: 'Informe a data do estorno.' };
+  const ops = [];
+  const futuras = cancelarFuturas ? parcelasFuturas(d, k, data) : [];
+  for (const x of futuras) ops.push(['del', 'compras_cartao', x.id]);
+  ops.push(['put', 'compras_cartao', {
+    id: novoId('k'), cartao: c.id, fatura: faturaDaCompra(c, data).fatura, data, valor: -valor, categoria: k.categoria || null,
+    descricao: `Estorno - ${(k.descricao || 'Compra').replace(/ \(\d+\/\d+\)$/, '')}`, estorno_de: k.id,
+  }]);
+  return { ops, canceladas: futuras.length };
+}

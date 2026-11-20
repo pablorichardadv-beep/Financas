@@ -34,7 +34,7 @@ export default function ajustes(ctx) {
     </section>
     ${instalado() ? '' : `<section class="card"><h2>Instalar no iPhone</h2>
       <p class="nota">1. Abra este endereço no <b>Safari</b>.<br>2. Toque em <b>Compartilhar</b> (quadrado com seta).<br>3. Escolha <b>Adicionar à Tela de Início</b>.<br>Depois, abra sempre pelo ícone: funciona sem internet.</p></section>`}
-    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 23.</p></section>`;
+    <section class="card"><h2>Sobre</h2><p class="nota">Controle Financeiro · versão 24.</p></section>`;
 
   return {
     html,
